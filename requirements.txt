@@ -1,3 +1,5 @@
 pyshark>=0.6
 requests>=2.25.0
 pip_system_certs>=4.0
+numpy>=1.21.0
+scikit-learn>=1.0.0

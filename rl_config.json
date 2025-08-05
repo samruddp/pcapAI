@@ -1,0 +1,22 @@
+{
+  "reinforcement_learning": {
+    "learning_rate": 0.1,
+    "discount_factor": 0.9,
+    "min_feedback_for_training": 5,
+    "auto_retrain_interval": 10,
+    "feedback_file": "feedback_data.json",
+    "model_file": "rl_model.pkl"
+  },
+  "feedback_collection": {
+    "prompt_for_feedback": true,
+    "require_feedback_for_low_ratings": true,
+    "save_improved_responses": true,
+    "feedback_timeout_seconds": 30
+  },
+  "response_enhancement": {
+    "apply_style_preferences": true,
+    "use_learned_patterns": true,
+    "avoid_negative_patterns": true,
+    "enhancement_confidence_threshold": 0.7
+  }
+}

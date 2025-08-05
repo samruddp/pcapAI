@@ -10,6 +10,18 @@ An AI-powered command line tool for analyzing network packet captures (pcap file
 - Command line interface for easy usage
 - Offline mode fallback when AI is unavailable
 
+## Project Structure
+```
+pcapAI/
+├── src/
+│   ├── __init__.py
+│   ├── pcap_analyzer.py
+│   └── ai_query_handler.py
+├── pcap_ai.py (main entry point)
+├── requirements.txt
+└── README.md
+```
+
 ## Prerequisites
 - Python 3.7+
 - Git (for version control)
@@ -44,6 +56,12 @@ pip install -r requirements.txt
 ```bash
 python pcap_ai.py --pcap sample.pcap --key netapp_llm_key.txt --query "What protocols are used in this trace?"
 ```
+
+### Example Queries
+- "What protocols are used in this trace?"
+- "What are the top source IP addresses?"
+- "Is there any suspicious network activity?"
+- "What ports are being used most frequently?"
 
 ## API Configuration
 This tool uses NetApp's internal LLM proxy API:

@@ -1,7 +1,7 @@
 import argparse
 import sys
-from pcap_analyzer import PcapAnalyzer
-from ai_query_handler import AIQueryHandler
+from src.pcap_analyzer import PcapAnalyzer
+from src.ai_query_handler import AIQueryHandler
 
 def read_openai_key(key_file):
     """Read OpenAI API key from file."""
@@ -31,11 +31,14 @@ def main():
     print(f"Query: {args.query}\n")
     
     try:
+        # Parse pcap file
+        parsed_data = pcap_analyzer.parse_pcap()
+        print("Pcap file parsed successfully.")
         # Analyze pcap file
-        analysis_data = pcap_analyzer.analyze()
+        # analysis_data = pcap_analyzer.analyze()
         
         # Get AI response
-        response = ai_handler.query(args.query, analysis_data)
+        response = ai_handler.query(args.query, parsed_data)
         
         print("AI Response:")
         print("-" * 50)

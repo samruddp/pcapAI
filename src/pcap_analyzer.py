@@ -1,13 +1,22 @@
 import pyshark
 from collections import defaultdict, Counter
 import json
+from src.packet_parser import PacketParser
+
 
 class PcapAnalyzer:
     def __init__(self, pcap_file):
         self.pcap_file = pcap_file
         self.packets = []
         self.analysis = {}
-    
+
+    def parse_pcap(self) -> str:
+        parser = PacketParser()
+        cap = pyshark.FileCapture(self.pcap_file)
+        packets = list(cap)
+        cap.close()
+        return parser.parse_packets_to_json(packets)
+
     def analyze(self):
         """Analyze the pcap file and extract relevant information."""
         print("Loading and analyzing pcap file...")

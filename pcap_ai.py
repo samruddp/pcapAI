@@ -34,8 +34,6 @@ def main():
         # Parse pcap file
         parsed_data = pcap_analyzer.parse_pcap()
         print("Pcap file parsed successfully.")
-        # Analyze pcap file
-        # analysis_data = pcap_analyzer.analyze()
         
         # Get AI response
         response = ai_handler.query(args.query, parsed_data)

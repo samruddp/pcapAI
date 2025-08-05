@@ -114,7 +114,9 @@ class AIQueryHandler:
             print("Falling back to offline analysis mode...")
             print("=" * 60)
 
-            return self.generate_offline_response(user_question, analysis_data)
+            response = self.generate_offline_response(user_question, analysis_data)
+            self.append_to_dataset(user_question, response)
+            return response
 
         # Prepare context for AI
         context = f"""
@@ -153,14 +155,18 @@ Please answer the following question about this network traffic data:
 
                 if response.status_code == 200:
                     result = response.json()
-                    return result["choices"][0]["message"]["content"].strip()
+                    response_content = result["choices"][0]["message"]["content"].strip()
+                    self.append_to_dataset(user_question, response_content)
+                    return response_content
                 else:
                     print(f"API error: HTTP {response.status_code}")
                     print(f"Response: {response.text}")
                     if attempt == max_retries - 1:
-                        return self.generate_offline_response(
+                        response = self.generate_offline_response(
                             user_question, analysis_data
                         )
+                        self.append_to_dataset(user_question, response)
+                        return response
 
             except requests.RequestException as e:
                 print(f"Connection error on attempt {attempt + 1}: {e}")
@@ -171,10 +177,40 @@ Please answer the following question about this network traffic data:
                     print(
                         "Failed to connect to NetApp LLM Proxy. Switching to offline mode..."
                     )
-                    return self.generate_offline_response(user_question, analysis_data)
+                    response = self.generate_offline_response(user_question, analysis_data)
+                    self.append_to_dataset(user_question, response)
+                    return response
 
             except Exception as e:
                 print(f"Unexpected error: {e}. Switching to offline mode...")
-                return self.generate_offline_response(user_question, analysis_data)
+                response = self.generate_offline_response(user_question, analysis_data)
+                self.append_to_dataset(user_question, response)
+                return response
 
-        return self.generate_offline_response(user_question, analysis_data)
+        response = self.generate_offline_response(user_question, analysis_data)
+        self.append_to_dataset(user_question, response)
+        return response
+
+    def append_to_dataset(self, user_question, response):
+        """Append the query and response to a JSON file."""
+        print("Appending to dataset...")
+        dataset_file = "dataset.json"
+        entry = {"question": user_question, "response": response}
+
+        try:
+            if os.path.exists(dataset_file):
+                with open(dataset_file, "r") as file:
+                    data = json.load(file)
+            else:
+                data = []
+
+            data.append(entry)
+
+            try:
+                with open(dataset_file, "w") as file:
+                    print(f"Appending to dataset file: {dataset_file}")
+                    json.dump(data, file, indent=4)
+            except Exception as e:
+                print(f"Error writing to dataset.json: {e}")
+        except Exception as e:
+            print(f"Failed to append to dataset file: {e}")

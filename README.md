@@ -1,7 +1,7 @@
 # pcapAI
-august 2025 hackathon project repository
+August 2025 hackathon project
 
-An AI-powered command line tool for analyzing network packet captures (pcap files) using natural language queries.
+AI-powered network packet capture analysis using natural language queries.
 
 ## Features
 - Parse pcap files using pyshark

@@ -14,5 +14,13 @@
     {
         "question": "Whats the tyep of most number of packets",
         "response": "The most common type of packets in the provided network traffic data is TCP. There are multiple TCP packets interspersed with NFS packets throughout the data, indicating that TCP is frequently used as the transport protocol for these transactions."
+    },
+    {
+        "question": "What protocols are used in this trace?",
+        "response": "The analysis data provided appears to be empty (\"[]\"), so I cannot determine which protocols are used in the network traffic trace. If you can provide more detailed information or a specific section of the packet capture, I may be able to help you identify the protocols involved."
+    },
+    {
+        "question": "Is this file empty?",
+        "response": "Yes, the analysis data shows \"[]\", which indicates that the file is empty or contains no network traffic data."
     }
 ]

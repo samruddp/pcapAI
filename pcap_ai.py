@@ -214,10 +214,13 @@ def show_help():
     print("💡 You can also just type your question directly!")
     print("="*60 + "\n")
 
-def interactive_mode():
+def interactive_mode(test_mode=False):
     """Run interactive session mode."""
     print("\n" + "🎯" + "="*58 + "🎯")
-    print("  🤖 WELCOME TO PCAP AI INTERACTIVE SESSION! 🤖")
+    if test_mode:
+        print("  🧪 PCAP AI TEST MODE - WITH RATINGS AND FEEDBACK🧪")
+    else:
+        print("  🤖 WELCOME TO PCAP AI INTERACTIVE SESSION! 🤖")
     print("🎯" + "="*58 + "🎯")
     print("💡 Type 'help' for commands or just ask questions about your pcap!")
     print("🚪 Type 'quit' or 'exit' to leave")
@@ -299,16 +302,61 @@ def interactive_mode():
                     print(response)
                     print("="*50)
                     
-                    # Update history and dataset
-                    session.history.append({
-                        "session_id": session.session_id,  # Unique session ID
-                        "timestamp": datetime.now().isoformat(),  # Current timestamp
-                        "user_details": session.user_details,  # User details (username, hostname)
-                        "pcap_file": session.pcap_file,  # Path to the pcap file being analyzed
-                        "query": query,  # User's query
-                        "response": response  # AI's response
-                    })
-                    session.dataset.append({"query": query, "response": response})
+                    # In test mode, collect feedback
+                    if test_mode:
+                        # Get rating
+                        while True:
+                            try:
+                                rating_input = input("\n📊 Please rate the AI's response from 1-5 (1=worst, 5=best): ").strip()
+                                rating = int(rating_input)
+                                if 1 <= rating <= 5:
+                                    break
+                                else:
+                                    print("❌ Please enter a number between 1 and 5")
+                            except ValueError:
+                                print("❌ Please enter a valid number between 1 and 5")
+                        
+                        # Get reason for rating
+                        reason = input("\n💭 Please provide a reason for your rating: ").strip()
+                        while not reason:
+                            reason = input("💭 Reason cannot be empty. Please provide a reason for your rating: ").strip()
+                        
+                        print(f"✓ Thank you for your feedback! Rating: {rating}/5")
+                        
+                        # Update history and dataset with feedback
+                        session.history.append({
+                            "session_id": session.session_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "user_details": session.user_details,
+                            "pcap_file": session.pcap_file,
+                            "query": query,
+                            "response": response,
+                            "test_mode": True,
+                            "feedback": {
+                                "rating": rating,
+                                "reason": reason
+                            }
+                        })
+                        session.dataset.append({
+                            "query": query, 
+                            "response": response,
+                            "feedback": {
+                                "rating": rating,
+                                "reason": reason
+                            }
+                        })
+                    else:
+                        # Update history and dataset without feedback
+                        session.history.append({
+                            "session_id": session.session_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "user_details": session.user_details,
+                            "pcap_file": session.pcap_file,
+                            "query": query,
+                            "response": response,
+                            "test_mode": False
+                        })
+                        session.dataset.append({"query": query, "response": response})
                     
                 except Exception as e:
                     print(f"❌ Error processing query: {e}")
@@ -355,8 +403,28 @@ Examples:
     parser.add_argument('--clear', action='store_true', help='Clear current session')
     parser.add_argument('--clear-history', action='store_true', help='Clear the history file')
     parser.add_argument('--interactive', '-i', action='store_true', help='Force interactive mode')
+    parser.add_argument('--t', action='store_true', help='Run in test mode')
+    parser.add_argument('--u', action='store_true', help='Run in user mode')
     
     args = parser.parse_args()
+    
+    # Check that either test mode or user mode is specified
+    if not args.t and not args.u:
+        print("❌ Error: You must specify either test mode (--t) or user mode (--u)")
+        print("\nExamples:")
+        print("  python3 pcap_ai.py --t --pcap file.pcap --key key.txt")
+        print("  python3 pcap_ai.py --u --pcap file.pcap --key key.txt")
+        return
+    
+    # Ensure only one mode is specified
+    if args.t and args.u:
+        print("❌ Error: Cannot specify both test mode (--t) and user mode (--u) at the same time")
+        print("Please choose either test mode (--t) or user mode (--u)")
+        return
+    
+    # Debug: Show which mode we're in
+    if args.t:
+        print("🧪 DEBUG: Running in TEST MODE")
     
     # Handle clear-history request
     if args.clear_history:
@@ -440,7 +508,7 @@ Examples:
     
     # If no query provided or interactive flag set, start interactive mode
     else:
-        interactive_mode()
+        interactive_mode(test_mode=args.t)
 
 if __name__ == "__main__":
     main()

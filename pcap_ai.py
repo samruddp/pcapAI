@@ -3,18 +3,35 @@ import sys
 import os
 import json
 import pickle
+import uuid
+import getpass
+from datetime import datetime
 from src.pcap_analyzer import PcapAnalyzer
 from src.ai_query_handler import AIQueryHandler
 
 class SessionManager:
-    """Manages session data for OpenAI key, pcap file, and parsed data."""
+    """Manages session data for OpenAI key, pcap file, parsed data, history, and dataset."""
     def __init__(self):
         self.openai_key = None
         self.pcap_file = None
         self.parsed_data = None
         self.pcap_analyzer = None
         self.session_file = "session_data.pkl"
+        self.history_file = ".cache/history.json"
+        self.dataset_file = "dataset.json" 
+        self.history = []
+        self.dataset = []
+        self.session_id = str(uuid.uuid4())  # Generate a unique session ID
+        self.user_details = self.get_user_details()  # Capture user details
         self.load_session()
+        self.load_history_and_dataset()
+
+    def get_user_details(self):
+        """Capture user details."""
+        return {
+            "username": os.environ.get("USER") or getpass.getuser(),
+            "hostname": os.uname().nodename
+        }
 
     def load_session(self):
         """Load session data from file if it exists."""
@@ -111,6 +128,51 @@ class SessionManager:
         }
         return info
 
+    def load_history_and_dataset(self):
+        """Load history.json and dataset.json into memory."""
+        # Ensure the .cache directory exists
+        cache_dir = ".cache"
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+
+        # Load history.json
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, "r") as file:
+                    self.history = json.load(file)
+                    print("✓ History loaded successfully")
+            except json.JSONDecodeError:
+                print("⚠️  Invalid JSON in history.json. Starting with an empty history.")
+                self.history = []
+
+        # Load dataset.json
+        if os.path.exists(self.dataset_file):
+            try:
+                with open(self.dataset_file, "r") as file:
+                    self.dataset = json.load(file)
+                    print("✓ Dataset loaded successfully")
+            except json.JSONDecodeError:
+                print("⚠️  Invalid JSON in dataset.json. Starting with an empty dataset.")
+                self.dataset = []
+
+    def save_history_and_dataset(self):
+        """Save history.json and dataset.json from memory to disk."""
+        try:
+            # Save history.json in the .cache directory
+            with open(self.history_file, "w") as file:
+                json.dump(self.history, file, indent=4)
+            print("✓ History saved successfully")
+        except Exception as e:
+            print(f"⚠️  Could not save history.json: {e}")
+
+        try:
+            # Save dataset.json in the main folder
+            with open(self.dataset_file, "w") as file:
+                json.dump(self.dataset, file, indent=4)
+            print("✓ Dataset saved successfully")
+        except Exception as e:
+            print(f"⚠️  Could not save dataset.json: {e}")
+
 # Global session manager
 session = SessionManager()
 
@@ -173,6 +235,7 @@ def interactive_mode():
             if user_input.lower() in ['quit', 'exit', 'q']:
                 print("👋 Thanks for using pcapAI! Session saved.")
                 session.save_session()
+                session.save_history_and_dataset()
                 break
                 
             # Handle help command
@@ -236,16 +299,29 @@ def interactive_mode():
                     print(response)
                     print("="*50)
                     
+                    # Update history and dataset
+                    session.history.append({
+                        "session_id": session.session_id,  # Unique session ID
+                        "timestamp": datetime.now().isoformat(),  # Current timestamp
+                        "user_details": session.user_details,  # User details (username, hostname)
+                        "pcap_file": session.pcap_file,  # Path to the pcap file being analyzed
+                        "query": query,  # User's query
+                        "response": response  # AI's response
+                    })
+                    session.dataset.append({"query": query, "response": response})
+                    
                 except Exception as e:
                     print(f"❌ Error processing query: {e}")
                     
         except KeyboardInterrupt:
             print("\n👋 Session interrupted. Saving data...")
             session.save_session()
+            session.save_history_and_dataset()
             break
         except EOFError:
             print("\n👋 Session ended. Saving data...")
             session.save_session()
+            session.save_history_and_dataset()
             break
 
 def main():
@@ -260,10 +336,14 @@ Examples:
   python pcap_ai.py --key key.txt --pcap file.pcap --query "How many packets?"
   
   # Show session status
-  python pcap_ai.py --status
+  python pcap_Interactive mode (recommended)
+  python pcap_ai.py
   
   # Clear session
   python pcap_ai.py --clear
+  
+  # Clear history
+  python pcap_ai.py --clear-history
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -273,9 +353,20 @@ Examples:
     parser.add_argument('--query', help='Question about the packet trace (single query mode)')
     parser.add_argument('--status', action='store_true', help='Show current session status')
     parser.add_argument('--clear', action='store_true', help='Clear current session')
+    parser.add_argument('--clear-history', action='store_true', help='Clear the history file')
     parser.add_argument('--interactive', '-i', action='store_true', help='Force interactive mode')
     
     args = parser.parse_args()
+    
+    # Handle clear-history request
+    if args.clear_history:
+        try:
+            with open(session.history_file, "w") as file:
+                json.dump([], file, indent=4)
+            print("✓ History cleared successfully")
+        except Exception as e:
+            print(f"⚠️  Could not clear history: {e}")
+        return
     
     # Handle clear request
     if args.clear:
@@ -327,6 +418,21 @@ Examples:
             print("="*50)
             print(response)
             print("="*50)
+            
+            # Update history with metadata
+            session.history.append({
+                "session_id": session.session_id,
+                "timestamp": datetime.now().isoformat(),
+                "user_details": session.user_details,
+                "pcap_file": session.pcap_file,
+                "query": args.query,
+                "response": response
+            })
+            session.dataset.append({
+                "query": args.query,
+                "response": response
+            })
+            session.save_history_and_dataset()
             
         except Exception as e:
             print(f"❌ Error: {e}")

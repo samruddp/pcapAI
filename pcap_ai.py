@@ -30,7 +30,7 @@ class SessionManager:
         """Capture user details."""
         return {
             "username": os.environ.get("USER") or getpass.getuser(),
-            "hostname": os.environ.get("COMPUTERNAME") or "unknown"
+            "hostname": os.uname().nodename
         }
 
     def load_session(self):

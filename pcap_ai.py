@@ -27,11 +27,33 @@ class SessionManager:
         self.load_history_and_dataset()
 
     def get_user_details(self):
-        """Capture user details."""
-        return {
-            "username": os.environ.get("USER") or getpass.getuser(),
-            "hostname": os.uname().nodename
-        }
+        """Capture user details with platform info."""
+        import platform
+
+        system = platform.system()
+
+        try:
+            username = getpass.getuser()
+            hostname = platform.node()
+
+            details = {
+                "username": username,
+                "hostname": hostname,
+                "platform": system,
+                "platform_release": platform.release(),
+                "python_version": platform.python_version(),
+            }
+
+            print(f"✓ Running on {system}")
+            return details
+
+        except Exception as e:
+            return {
+                "username": "unknown",
+                "hostname": "unknown",
+                "platform": system,
+                "error": str(e),
+            }
 
     def load_session(self):
         """Load session data from file if it exists."""

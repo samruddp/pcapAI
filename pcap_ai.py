@@ -304,6 +304,11 @@ Examples:
         # Get session data
         openai_key = session.get_openai_key()
         parsed_data = session.get_parsed_data()
+
+    try:
+        # Parse pcap file
+        parsed_data = pcap_analyzer.parse_pcap()
+        print("Pcap file parsed successfully.")
         
         if not openai_key:
             print("❌ Error: OpenAI key not set for this session.")

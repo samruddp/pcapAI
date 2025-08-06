@@ -11,3 +11,5 @@ session_data.pkl
 # Ignore API key files
 openai_key.txt
 *.key
+
+DEV_NOTES.md

@@ -3,3 +3,11 @@
 __pycache__/
 src/__pycache__/
 *.py[cod]
+
+# Ignore session data files
+session_data.pkl
+*.pkl
+
+# Ignore API key files
+openai_key.txt
+*.key

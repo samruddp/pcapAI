@@ -10,5 +10,9 @@
     {
         "question": "show me the first setattr packet and which attributes are being set in this? Can you also provide UID and GID values?",
         "response": "The first `setattr` packet in the data is packet number 25. This packet contains a procedure call to set attributes, indicated by the NFS (Network File System) procedure `procedure_v3` with a value of `2`, which corresponds to the `SETATTR` operation.\n\nThe attributes being set in this packet are:\n- File handle length (`fh_length`): 60\n- File handle hash (`fh_hash`): 0xc351b99c\n- Mode (`mode3`): 448, which corresponds to file permissions in octal mode `0700`. This means the owner has read, write, and execute permissions, while group and others have no permissions.\n- Set mode flag (`set_it`): 1, indicating the mode is being set.\n\nThe UID and GID values for this packet are:\n- UID (`auth_uid`): 501\n- GID (`auth_gid`): 20\n\nThese values indicate the user and group identifiers for the file operation."
+    },
+    {
+        "question": "Whats the tyep of most number of packets",
+        "response": "The most common type of packets in the provided network traffic data is TCP. There are multiple TCP packets interspersed with NFS packets throughout the data, indicating that TCP is frequently used as the transport protocol for these transactions."
     }
 ]

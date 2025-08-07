@@ -198,6 +198,32 @@ class SessionManager:
 # Global session manager
 session = SessionManager()
 
+def extract_protocols_from_query(query, known_protocols):
+    """Extract protocol names mentioned in the query."""
+    query_lower = query.lower()
+    return [proto for proto in known_protocols if proto.lower() in query_lower]
+
+def filter_packets_by_protocols(packets, protocols):
+    """Return only packets matching the specified protocols."""
+    if not protocols:
+        print("🔍 No specific protocols requested, returning all packets.")
+        return packets
+    print(f"Processing protocols: {', '.join(protocols)}")
+    filtered = []
+    for pkt in packets:
+        # Check metadata.highest_layer
+        highest_layer = pkt.get("metadata", {}).get("highest_layer", "").upper()
+        if highest_layer in [p.upper() for p in protocols]:
+            filtered.append(pkt)
+            continue
+        # Check if protocol exists in layers
+        layers = pkt.get("layers", {})
+        for proto in protocols:
+            if proto.lower() in layers:
+                filtered.append(pkt)
+                break
+    return filtered
+
 def read_openai_key(key_file):
     """Read OpenAI API key from file."""
     try:
@@ -295,7 +321,7 @@ def interactive_mode(test_mode=False):
                 
             # Handle pcap command
             elif user_input.lower().startswith('pcap '):
-                pcap_path = user_input[5:].strip().strip('"\'')
+                pcap_path = user_input[5:].trip().strip('"\'')
                 if session.set_pcap_file(pcap_path):
                     print("✓ PCAP file updated in session")
                 continue
@@ -320,12 +346,27 @@ def interactive_mode(test_mode=False):
                     print("❌ No pcap data loaded. Use: pcap <path_to_pcap_file>")
                     continue
                 
-                # Process the query
+                # Preprocess based on protocols in query
                 print(f"🤖 Processing: {query}")
                 try:
+                    known_protocols = ["TCP", "NFS", "SMB", "UDP", "HTTP", "SMB2"]  # Extend as needed
+                    protocols = extract_protocols_from_query(query, known_protocols)
+                    print (f"🔍 Extracted protocols: {', '.join(protocols) if protocols else 'None'}")
+                    if isinstance(parsed_data, str):
+                        try:
+                            parsed_data = json.loads(parsed_data)
+                        except Exception as e:
+                            print(f"❌ Error parsing pcap data JSON: {e}")
+                            continue
+
+                    packets = parsed_data if isinstance(parsed_data, list) else parsed_data.get("packets", [])
+                    filtered_packets = filter_packets_by_protocols(packets, protocols)
+                    print(f"🔎 Analysing {len(filtered_packets)} packets...")
+                    analysis_data = {"packets": filtered_packets}
+
                     ai_handler = AIQueryHandler(openai_key)
-                    response = ai_handler.query(query, parsed_data)
-                    
+                    response = ai_handler.query(query, analysis_data)
+
                     print("\n" + "="*50)
                     print("🤖 AI RESPONSE")
                     print("="*50)
@@ -398,6 +439,18 @@ def interactive_mode(test_mode=False):
                         })
                         session.dataset.append({"query": query, "response": response})
                     
+
+                    # Update history and dataset
+                    session.history.append({
+                        "session_id": session.session_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "user_details": session.user_details,
+                        "pcap_file": session.pcap_file,
+                        "query": query,
+                        "response": response
+                    })
+                    session.dataset.append({"query": query, "response": response})
+
                 except Exception as e:
                     print(f"❌ Error processing query: {e}")
                     
@@ -519,7 +572,14 @@ Examples:
         print(f"🤖 Processing query: {args.query}")
         
         try:
-            response = ai_handler.query(args.query, parsed_data)
+            known_protocols = ["TCP", "NFS", "SMB", "UDP", "HTTP"]  # Extend as needed
+            protocols = extract_protocols_from_query(args.query, known_protocols)
+            packets = parsed_data if isinstance(parsed_data, list) else parsed_data.get("packets", [])
+            filtered_packets = filter_packets_by_protocols(packets, protocols)
+            print(f"🔎 Analysing {len(filtered_packets)} packets...")
+            analysis_data = {"packets": filtered_packets}
+
+            response = ai_handler.query(args.query, analysis_data)
             
             print("\n" + "="*50)
             print("🤖 AI RESPONSE")

@@ -124,7 +124,7 @@ You are an expert network analyst. You have been provided with analysis data fro
 The user will ask questions about this network traffic data. Please provide clear, accurate answers in plain English.
 
 Analysis Data:
-{json.dumps(analysis_data, indent=2)}
+{json.dumps(analysis_data)}
 
 Please answer the following question about this network traffic data:
 """

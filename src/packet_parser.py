@@ -382,7 +382,7 @@ class PacketParser:
                     {"packet_index": i, "error": f"Failed to parse packet: {str(e)}"}
                 )
 
-        return json.dumps(parsed_packets, indent=2, default=str)
+        return json.dumps(parsed_packets, default=str)
 
     def get_packet_summary(self, packet) -> str:
         """Get a brief summary of the packet."""

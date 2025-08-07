@@ -17,3 +17,6 @@ DEV_NOTES.md
 
 # Ignore .cache directory
 .cache/
+
+# Ignore dataset files
+.dataset.json

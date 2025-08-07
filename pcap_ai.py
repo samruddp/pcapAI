@@ -271,8 +271,10 @@ def interactive_mode(test_mode=False):
     # Prompt for a single protocol once per session
     known_protocols = ["NFS", "HTTP", "SMB2"]
     print("🧬 Available protocols:", ", ".join(known_protocols))
-    proto_input = input("🌈 Please enter ONE protocol to focus on for this session: ").strip().upper()
+    
     while True:
+        proto_input = input("🌈 Please enter ONE protocol to focus on for this session (or press Enter to skip): ").strip().upper()
+        
         if not proto_input:
             session.last_protocols = []
             print("✨ No protocol filter set. All protocols will be considered.")
@@ -283,6 +285,7 @@ def interactive_mode(test_mode=False):
             break
         else:
             print(f"❌ '{proto_input}' is not a valid protocol. Please choose from: {', '.join(known_protocols)}")
+            # The loop will continue and ask for input again
 
     while True:
         try:

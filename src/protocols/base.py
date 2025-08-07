@@ -1,24 +1,24 @@
+import pyshark
+from src.packet_parser import PacketParser
+
 class ProtocolBase:
     def __init__(self, name):
         self.name = name
 
-    def filter_packets(self, packets):
-        """Default filtering: match by highest_layer or layer name."""
-        filtered = []
-        for pkt in packets:
-            highest_layer = pkt.get("metadata", {}).get("highest_layer", "").upper()
-            if highest_layer == self.name.upper():
-                filtered.append(pkt)
-                continue
-            layers = pkt.get("layers", {})
-            if self.name.lower() in layers:
-                filtered.append(pkt)
-        return filtered
+    def filter_packets(self, pcap_file):
+        """Use PyShark display filter for protocol and return JSON-serializable dicts."""
+        parser = PacketParser()
+        display_filter = self.name.lower()
+        cap = pyshark.FileCapture(pcap_file, display_filter=display_filter)
+        packets = []
+        for pkt in cap:
+            pkt_info = parser.parse_packet(pkt)  # Should return a dict
+            packets.append(pkt_info)
+        return packets
 
     def analyze(self, packets):
-        """Protocol-specific analysis (override in subclasses)."""
         return {
             "protocol": self.name,
             "packet_count": len(packets),
-            "packets": packets  # Include the actual filtered packets
+            "packets": packets,
         }

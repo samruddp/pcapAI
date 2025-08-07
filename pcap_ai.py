@@ -268,7 +268,7 @@ def interactive_mode(test_mode=False):
     show_session_status()
 
     # Prompt for a single protocol once per session
-    known_protocols = ["TCP", "NFS", "SMB", "UDP", "HTTP", "SMB2"]
+    known_protocols = ["NFS", "HTTP", "SMB2"]
     print("🧬 Available protocols:", ", ".join(known_protocols))
     proto_input = input("🌈 Please enter ONE protocol to focus on for this session: ").strip().upper()
     while True:
@@ -361,7 +361,7 @@ def interactive_mode(test_mode=False):
                         proto_name = session.last_protocols[0]
                         proto_handler = protocol_classes.get(proto_name)
                         if proto_handler:
-                            filtered_packets = proto_handler.filter_packets(packets)
+                            filtered_packets = proto_handler.filter_packets(session.pcap_file)
                             analysis_data = proto_handler.analyze(filtered_packets)
                         else:
                             print(f"❌ Protocol handler for {proto_name} not found. Using all packets.")

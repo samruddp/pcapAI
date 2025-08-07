@@ -211,6 +211,14 @@ def show_help():
     print("❓ help                      - Show this help")
     print("🚪 quit/exit                 - Exit the program")
     print("="*60)
+    print("🎯 MODE INFORMATION")
+    print("="*60)
+    print("🧪 TEST MODE (--t)           - Collects feedback after each AI response")
+    print("                             - Prompts for satisfaction rating & reason")
+    print("                             - Used for improving AI model performance")
+    print("                             - Saves feedback to dataset.json")
+    print("👤 USER MODE (--u)           - Standard mode")
+    print("="*60)
     print("💡 You can also just type your question directly!")
     print("="*60 + "\n")
 
@@ -218,7 +226,7 @@ def interactive_mode(test_mode=False):
     """Run interactive session mode."""
     print("\n" + "🎯" + "="*58 + "🎯")
     if test_mode:
-        print("  🧪 PCAP AI TEST MODE - WITH RATINGS AND FEEDBACK🧪")
+        print("  🧪 PCAP AI TEST MODE - WITH FEEDBACK🧪")
     else:
         print("  🤖 WELCOME TO PCAP AI INTERACTIVE SESSION! 🤖")
     print("🎯" + "="*58 + "🎯")

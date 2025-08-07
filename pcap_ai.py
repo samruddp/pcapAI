@@ -8,6 +8,16 @@ import getpass
 from datetime import datetime
 from src.pcap_analyzer import PcapAnalyzer
 from src.ai_query_handler import AIQueryHandler
+from src.protocols.nfs import NFSProtocol
+from src.protocols.smb import SMBProtocol
+from src.protocols.http import HTTPProtocol
+
+protocol_classes = {
+    "NFS": NFSProtocol(),
+    "SMB": SMBProtocol(),
+    "HTTP": HTTPProtocol(),
+    # Add more as needed
+}
 
 class SessionManager:
     """Manages session data for OpenAI key, pcap file, parsed data, history, and dataset."""
@@ -282,7 +292,23 @@ def interactive_mode(test_mode=False):
     print("🚪 Type 'quit' or 'exit' to leave")
     
     show_session_status()
-    
+
+    # Prompt for a single protocol once per session
+    known_protocols = ["TCP", "NFS", "SMB", "UDP", "HTTP", "SMB2"]
+    print("🧬 Available protocols:", ", ".join(known_protocols))
+    proto_input = input("🌈 Please enter ONE protocol to focus on for this session: ").strip().upper()
+    while True:
+        if not proto_input:
+            session.last_protocols = []
+            print("✨ No protocol filter set. All protocols will be considered.")
+            break
+        elif proto_input in known_protocols:
+            session.last_protocols = [proto_input]
+            print(f"✅ Protocol set for session: {proto_input}")
+            break
+        else:
+            print(f"❌ '{proto_input}' is not a valid protocol. Please choose from: {', '.join(known_protocols)}")
+
     while True:
         try:
             user_input = input("\n🤖 pcapAI> ").strip()
@@ -349,9 +375,6 @@ def interactive_mode(test_mode=False):
                 # Preprocess based on protocols in query
                 print(f"🤖 Processing: {query}")
                 try:
-                    known_protocols = ["TCP", "NFS", "SMB", "UDP", "HTTP", "SMB2"]  # Extend as needed
-                    protocols = extract_protocols_from_query(query, known_protocols)
-                    print (f"🔍 Extracted protocols: {', '.join(protocols) if protocols else 'None'}")
                     if isinstance(parsed_data, str):
                         try:
                             parsed_data = json.loads(parsed_data)
@@ -360,9 +383,21 @@ def interactive_mode(test_mode=False):
                             continue
 
                     packets = parsed_data if isinstance(parsed_data, list) else parsed_data.get("packets", [])
-                    filtered_packets = filter_packets_by_protocols(packets, protocols)
-                    print(f"🔎 Analysing {len(filtered_packets)} packets...")
-                    analysis_data = {"packets": filtered_packets}
+                    if session.last_protocols:
+                        proto_name = session.last_protocols[0]
+                        proto_handler = protocol_classes.get(proto_name)
+                        if proto_handler:
+                            filtered_packets = proto_handler.filter_packets(packets)
+                            analysis_data = proto_handler.analyze(filtered_packets)
+                        else:
+                            print(f"❌ Protocol handler for {proto_name} not found. Using all packets.")
+                            filtered_packets = packets
+                            analysis_data = {"packets": filtered_packets}
+                    else:
+                        filtered_packets = packets
+                        analysis_data = {"packets": filtered_packets}
+
+                    print(f"🔎 Analysing {len(filtered_packets)} packets...")                    
 
                     ai_handler = AIQueryHandler(openai_key)
                     response = ai_handler.query(query, analysis_data)

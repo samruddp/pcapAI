@@ -304,24 +304,34 @@ def interactive_mode(test_mode=False):
                     
                     # In test mode, collect feedback
                     if test_mode:
-                        # Get rating
+                        # Get feedback rating
                         while True:
                             try:
-                                rating_input = input("\n📊 Please rate the AI's response from 1-5 (1=worst, 5=best): ").strip()
-                                rating = int(rating_input)
-                                if 1 <= rating <= 5:
+                                feedback = input("\n📊 How would you rate the AI's response? (satisfied/neutral/unsatisfied): ").strip().lower()
+                                if feedback in ['satisfied', 'neutral', 'unsatisfied', 's', 'n', 'u']:
+                                    # Normalize to full words
+                                    if feedback in ['s', 'satisfied']:
+                                        feedback = 'satisfied'
+                                    elif feedback in ['n', 'neutral']:
+                                        feedback = 'neutral'
+                                    elif feedback in ['u', 'unsatisfied']:
+                                        feedback = 'unsatisfied'
                                     break
                                 else:
-                                    print("❌ Please enter a number between 1 and 5")
+                                    print("❌ Please respond with 'satisfied', 'neutral', or 'unsatisfied'")
                             except ValueError:
-                                print("❌ Please enter a valid number between 1 and 5")
+                                print("❌ Please enter a valid response (satisfied/neutral/unsatisfied)")
                         
-                        # Get reason for rating
-                        reason = input("\n💭 Please provide a reason for your rating: ").strip()
-                        while not reason:
-                            reason = input("💭 Reason cannot be empty. Please provide a reason for your rating: ").strip()
+                        # Ask for optional reason
+                        reason = ""
+                        try:
+                            reason_input = input("\n💭 Would you like to provide a reason for your rating? (If not, then press Enter to skip): ").strip()
+                            if reason_input:
+                                reason = reason_input
+                        except (KeyboardInterrupt, EOFError):
+                            reason = ""
                         
-                        print(f"✓ Thank you for your feedback! Rating: {rating}/5")
+                        print(f"✓ Thank you for your feedback! Rating: {feedback}")
                         
                         # Update history and dataset with feedback
                         session.history.append({
@@ -333,7 +343,7 @@ def interactive_mode(test_mode=False):
                             "response": response,
                             "test_mode": True,
                             "feedback": {
-                                "rating": rating,
+                                "rating": feedback,
                                 "reason": reason
                             }
                         })
@@ -341,7 +351,7 @@ def interactive_mode(test_mode=False):
                             "query": query, 
                             "response": response,
                             "feedback": {
-                                "rating": rating,
+                                "rating": feedback,
                                 "reason": reason
                             }
                         })
@@ -487,19 +497,75 @@ Examples:
             print(response)
             print("="*50)
             
-            # Update history with metadata
-            session.history.append({
-                "session_id": session.session_id,
-                "timestamp": datetime.now().isoformat(),
-                "user_details": session.user_details,
-                "pcap_file": session.pcap_file,
-                "query": args.query,
-                "response": response
-            })
-            session.dataset.append({
-                "query": args.query,
-                "response": response
-            })
+            # In test mode, collect feedback
+            if args.t:
+                # Get feedback rating
+                while True:
+                    try:
+                        feedback = input("\n📊 How would you rate the AI's response? (satisfied/neutral/unsatisfied): ").strip().lower()
+                        if feedback in ['satisfied', 'neutral', 'unsatisfied', 's', 'n', 'u']:
+                            # Normalize to full words
+                            if feedback in ['s', 'satisfied']:
+                                feedback = 'satisfied'
+                            elif feedback in ['n', 'neutral']:
+                                feedback = 'neutral'
+                            elif feedback in ['u', 'unsatisfied']:
+                                feedback = 'unsatisfied'
+                            break
+                        else:
+                            print("❌ Please respond with 'satisfied', 'neutral', or 'unsatisfied'")
+                    except ValueError:
+                        print("❌ Please enter a valid response (satisfied/neutral/unsatisfied)")
+                
+                # Ask for optional reason
+                reason = ""
+                try:
+                    reason_input = input("\n💭 Would you like to provide a reason for your rating? (If not, then press Enter to skip): ").strip()
+                    if reason_input:
+                        reason = reason_input
+                except (KeyboardInterrupt, EOFError):
+                    reason = ""
+                
+                print(f"✓ Thank you for your feedback! Rating: {feedback}")
+                
+                # Update history with metadata and feedback
+                session.history.append({
+                    "session_id": session.session_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "user_details": session.user_details,
+                    "pcap_file": session.pcap_file,
+                    "query": args.query,
+                    "response": response,
+                    "test_mode": True,
+                    "feedback": {
+                        "rating": feedback,
+                        "reason": reason
+                    }
+                })
+                session.dataset.append({
+                    "query": args.query,
+                    "response": response,
+                    "feedback": {
+                        "rating": feedback,
+                        "reason": reason
+                    }
+                })
+            else:
+                # Update history with metadata (no feedback in user mode)
+                session.history.append({
+                    "session_id": session.session_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "user_details": session.user_details,
+                    "pcap_file": session.pcap_file,
+                    "query": args.query,
+                    "response": response,
+                    "test_mode": False
+                })
+                session.dataset.append({
+                    "query": args.query,
+                    "response": response
+                })
+            
             session.save_history_and_dataset()
             
         except Exception as e:

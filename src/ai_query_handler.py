@@ -103,8 +103,8 @@ class AIQueryHandler:
                 + f"For AI analysis, ensure NetApp LLM proxy access is configured."
             )
 
-    def query(self, user_question, analysis_data):
-        """Send query to NetApp's LLM proxy API with pcap analysis data."""
+    def query(self, user_question, analysis_data, conversation_history=None):
+        """Send query to NetApp's LLM proxy API with pcap analysis data and conversation history."""
 
         print("Testing connectivity...")
         if not self.test_connection():
@@ -128,6 +128,13 @@ Analysis Data:
 
 Please answer the following question about this network traffic data:
 """
+        # Build messages with previous context
+        messages = [{"role": "system", "content": context}]
+        if conversation_history:
+            for entry in conversation_history:
+                messages.append({"role": "user", "content": entry["query"]})
+                messages.append({"role": "assistant", "content": entry["response"]})
+        messages.append({"role": "user", "content": user_question})
 
         # Retry logic
         max_retries = 3
@@ -142,13 +149,10 @@ Please answer the following question about this network traffic data:
                     headers={"Authorization": "Bearer " + self.load_your_key()},
                     json={
                         "model": "gpt-4o",
-                        "messages": [
-                            {"role": "system", "content": context},
-                            {"role": "user", "content": user_question},
-                        ],
+                        "messages": messages,
                         "user": self.detect_user(),
                         "max_tokens": 500,
-                        "temperature": 0.7,
+                        "temperature": 0.2,
                     },
                     timeout=30,
                 )

@@ -31,6 +31,7 @@ class SessionManager:
         self.dataset_file = "dataset.json" 
         self.history = []
         self.dataset = []
+        self.conversation_history = []  # <-- add this for AI context
         self.session_id = str(uuid.uuid4())  # Generate a unique session ID
         self.user_details = self.get_user_details()  # Capture user details
         self.load_session()
@@ -374,7 +375,7 @@ def interactive_mode(test_mode=False):
                     print(f"🔎 Analysing {len(filtered_packets)} packets...")                    
 
                     ai_handler = AIQueryHandler(openai_key)
-                    response = ai_handler.query(query, analysis_data)
+                    response = ai_handler.query(query, analysis_data, session.conversation_history)
                     
                     print("\n" + "="*50)
                     print("🤖 AI RESPONSE")
@@ -435,6 +436,10 @@ def interactive_mode(test_mode=False):
                                 "reason": reason
                             }
                         })
+                        session.conversation_history.append({
+                            "query": query,
+                            "response": response
+                        })
                     else:
                         # Update history and dataset without feedback
                         session.history.append({
@@ -447,6 +452,10 @@ def interactive_mode(test_mode=False):
                             "test_mode": False
                         })
                         session.dataset.append({"query": query, "response": response})
+                        session.conversation_history.append({
+                            "query": query,
+                            "response": response
+                        })
                     
                 except Exception as e:
                     print(f"❌ Error processing query: {e}")
@@ -630,6 +639,10 @@ Examples:
                         "reason": reason
                     }
                 })
+                session.conversation_history.append({
+                    "query": args.query,
+                    "response": response
+                })
             else:
                 # Update history with metadata (no feedback in user mode)
                 session.history.append({
@@ -642,6 +655,10 @@ Examples:
                     "test_mode": False
                 })
                 session.dataset.append({
+                    "query": args.query,
+                    "response": response
+                })
+                session.conversation_history.append({
                     "query": args.query,
                     "response": response
                 })

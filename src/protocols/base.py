@@ -14,6 +14,7 @@ class ProtocolBase:
         for pkt in cap:
             pkt_info = parser.parse_packet(pkt)  # Should return a dict
             packets.append(pkt_info)
+        cap.close()
         return packets
 
     def analyze(self, packets):

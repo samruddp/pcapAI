@@ -400,7 +400,7 @@ def interactive_mode(test_mode=False):
                         # Get feedback rating
                         while True:
                             try:
-                                feedback = input("\n📊 How would you rate the AI's response? (satisfied/neutral/unsatisfied): ").strip().lower()
+                                feedback = input("\n📊 Rate the AI's response [s=satisfied | n=neutral | u=unsatisfied]: ").strip().lower()
                                 if feedback in ['satisfied', 'neutral', 'unsatisfied', 's', 'n', 'u']:
                                     # Normalize to full words
                                     if feedback in ['s', 'satisfied']:

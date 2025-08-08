@@ -27,6 +27,10 @@ class SessionManager:
         self.pcap_file = None
         self.parsed_data = None
         self.pcap_analyzer = None
+        self.ai_handler = None  # Cache AI handler
+        self.filtered_packets = None  # Cache filtered packets
+        self.analysis_data = None  # Cache analysis data
+        self.last_protocols = []  # Track current protocol filter
         self.session_file = "session_data.pkl"
         self.history_file = ".cache/history.json"
         self.dataset_file = "dataset.json" 
@@ -101,10 +105,14 @@ class SessionManager:
 
     def clear_session(self):
         """Clear current session and remove session file."""
-        self.openai_key = None
-        self.pcap_file = None
-        self.parsed_data = None
-        self.pcap_analyzer = None
+        # self.openai_key = None
+        # self.pcap_file = None
+        # self.parsed_data = None
+        # self.pcap_analyzer = None
+        # self.ai_handler = None  # Clear cached AI handler
+        self.filtered_packets = None  # Clear cached filtered packets
+        self.analysis_data = None  # Clear cached analysis data
+        self.last_protocols = []  # Clear protocol filter
         try:
             if os.path.exists(self.session_file):
                 os.remove(self.session_file)
@@ -113,16 +121,94 @@ class SessionManager:
             print(f"⚠️  Could not clear session file: {e}")
 
     def set_openai_key(self, key_file):
-        """Set OpenAI API key."""
+        """Set OpenAI API key and initialize AI handler."""
         try:
             with open(key_file, 'r') as f:
                 self.openai_key = f.read().strip()
+                # Initialize AI handler once when key is set
+                self._initialize_ai_handler(test_mode=self.test_mode)
                 self.log_debug("✓ OpenAI key loaded successfully")
                 self.save_session()
         except FileNotFoundError:
             print(f"Error: OpenAI key file '{key_file}' not found.")
             return False
         return True
+
+    def _initialize_ai_handler(self, test_mode):
+        """Initialize AI handler once when we have the key."""
+        if self.openai_key:
+            try:
+                print("🔧 Initializing AI handler...")
+                self.ai_handler = AIQueryHandler(self.openai_key, test_mode=test_mode)
+                print("✓ AI handler initialized and cached for session")
+            except Exception as e:
+                print(f"⚠️  Error initializing AI handler: {e}")
+                self.ai_handler = None
+
+    def set_protocol_filter(self, protocols):
+        """Set protocol filter and process packets once."""
+        if self.last_protocols == protocols and self.filtered_packets is not None:
+            print("✓ Using cached filtered packets (protocol unchanged)")
+            return True
+
+        self.last_protocols = protocols
+
+        if not self.parsed_data:
+            print("❌ No PCAP data available to filter")
+            return False
+
+        try:
+            print(f"🔄 Filtering packets for protocol(s): {protocols}")
+
+            # Parse the data if it's a string
+            if isinstance(self.parsed_data, str):
+                parsed_data = json.loads(self.parsed_data)
+            else:
+                parsed_data = self.parsed_data
+
+            packets = (
+                parsed_data
+                if isinstance(parsed_data, list)
+                else parsed_data.get("packets", [])
+            )
+
+            if protocols:
+                proto_name = protocols[0]  # Use first protocol
+                proto_handler = protocol_classes.get(proto_name)
+                if proto_handler:
+                    self.filtered_packets = proto_handler.filter_packets(self.pcap_file)
+                    self.analysis_data = proto_handler.analyze(self.filtered_packets)
+                    print(
+                        f"✓ Filtered to {len(self.filtered_packets)} {proto_name} packets"
+                    )
+                else:
+                    print(
+                        f"❌ Protocol handler for {proto_name} not found. Using all packets."
+                    )
+                    self.filtered_packets = packets
+                    self.analysis_data = {"packets": self.filtered_packets}
+            else:
+                self.filtered_packets = packets
+                self.analysis_data = {"packets": self.filtered_packets}
+                print(
+                    f"✓ Using all {len(self.filtered_packets)} packets (no protocol filter)"
+                )
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error filtering packets: {e}")
+            return False
+
+    def get_ai_handler(self):
+        """Get the cached AI handler."""
+        if not self.ai_handler and self.openai_key:
+            self._initialize_ai_handler()
+        return self.ai_handler
+
+    def get_filtered_data(self):
+        """Get the cached filtered packets and analysis data."""
+        return self.filtered_packets, self.analysis_data
 
     def set_pcap_file(self, pcap_file):
         """Set pcap file path and parse it."""
@@ -160,10 +246,15 @@ class SessionManager:
     def get_session_info(self):
         """Get current session information."""
         info = {
-            'openai_key_set': self.openai_key is not None,
-            'pcap_file': self.pcap_file,
-            'pcap_parsed': self.parsed_data is not None,
-            'data_size': len(str(self.parsed_data)) if self.parsed_data else 0
+            "openai_key_set": self.openai_key is not None,
+            "pcap_file": self.pcap_file,
+            "pcap_parsed": self.parsed_data is not None,
+            "ai_handler_ready": self.ai_handler is not None,
+            "protocol_filter": self.last_protocols,
+            "filtered_packets_count": len(self.filtered_packets)
+            if self.filtered_packets
+            else 0,
+            "data_size": len(str(self.parsed_data)) if self.parsed_data else 0,
         }
         return info
 
@@ -233,6 +324,11 @@ def show_session_status():
     print(f"🔑 OpenAI Key: {'✓ Set' if info['openai_key_set'] else '❌ Not set'}")
     print(f"📁 PCAP File: {info['pcap_file'] if info['pcap_file'] else '❌ Not set'}")
     print(f"📊 PCAP Parsed: {'✓ Yes' if info['pcap_parsed'] else '❌ No'}")
+    print(f"🤖 AI Handler: {'✓ Ready' if info['ai_handler_ready'] else '❌ Not ready'}")
+    print(
+        f"🔧 Protocol Filter: {', '.join(info['protocol_filter']) if info['protocol_filter'] else 'None (all protocols)'}"
+    )
+    print(f"📦 Filtered Packets: {info['filtered_packets_count']:,}")
     if info['pcap_parsed']:
         print(f"💾 Data Size: {info['data_size']:,} characters")
     print("="*50 + "\n")
@@ -295,8 +391,29 @@ def interactive_mode(test_mode=False):
             print(f"❌ '{proto_input}' is not a valid protocol. Please choose from: {', '.join(known_protocols)}")
             # The loop will continue and ask for input again
 
+    # Set protocol filter once (this will filter packets once)
+    if session.get_parsed_data():
+        session.set_protocol_filter(session.last_protocols)
+
     while True:
         try:
+            # if last_protocol is not set, ask the user for protocol input and filter again
+            if not session.last_protocols:
+                proto_input = (
+                    input("🌈 Please enter ONE protocol to focus on for this session: ")
+                    .strip()
+                    .upper()
+                )
+                if proto_input in known_protocols:
+                    session.last_protocols = [proto_input]
+                    session.set_protocol_filter(session.last_protocols)
+                    print(f"✅ Protocol set for session: {proto_input}")
+                else:
+                    print(
+                        f"❌ '{proto_input}' is not a valid protocol. Please choose from: {', '.join(known_protocols)}"
+                    )
+                    continue
+
             user_input = input("\n🤖 pcapAI> ").strip()
             
             if not user_input:
@@ -327,7 +444,7 @@ def interactive_mode(test_mode=False):
             # Handle key command
             elif user_input.lower().startswith('key '):
                 key_path = user_input[4:].strip().strip('"\'')
-                if session.set_openai_key(key_path):
+                if session.set_openai_key(key_path, test_mode=test_mode):
                     print("✓ API key updated in session")
                 continue
                 
@@ -336,6 +453,8 @@ def interactive_mode(test_mode=False):
                 pcap_path = user_input[5:].strip().strip('"\'')
                 if session.set_pcap_file(pcap_path):
                     print("✓ PCAP file updated in session")
+                    # Re-filter packets with current protocol
+                    session.set_protocol_filter(session.last_protocols)
                 continue
                 
             # Handle query command or direct question
@@ -364,32 +483,20 @@ def interactive_mode(test_mode=False):
                 else:
                     print("🤖 Processing...")
                 try:
-                    if isinstance(parsed_data, str):
-                        try:
-                            parsed_data = json.loads(parsed_data)
-                        except Exception as e:
-                            print(f"❌ Error parsing pcap data JSON: {e}")
-                            continue
+                    # Get cached AI handler and filtered data
+                    ai_handler = session.get_ai_handler()
+                    if not ai_handler:
+                        print("❌ Failed to initialize AI handler")
+                        continue
 
-                    packets = parsed_data if isinstance(parsed_data, list) else parsed_data.get("packets", [])
-                    if session.last_protocols:
-                        proto_name = session.last_protocols[0]
-                        proto_handler = protocol_classes.get(proto_name)
-                        if proto_handler:
-                            filtered_packets = proto_handler.filter_packets(session.pcap_file)
-                            analysis_data = proto_handler.analyze(filtered_packets)
-                        else:
-                            print(f"❌ Protocol handler for {proto_name} not found. Using all packets.")
-                            filtered_packets = packets
-                            analysis_data = {"packets": filtered_packets}
-                    else:
-                        filtered_packets = packets
-                        analysis_data = {"packets": filtered_packets}
+                    filtered_packets, analysis_data = session.get_filtered_data()
+                    if filtered_packets is None:
+                        print("❌ No filtered packet data available")
+                        continue
 
                     if test_mode:
                         print(f"🔎 Analysing {len(filtered_packets)} packets...")                    
 
-                    ai_handler = AIQueryHandler(openai_key, test_mode=test_mode)
                     response = ai_handler.query(query, analysis_data, session.conversation_history)
                     
                     print("\n" + "="*50)
@@ -566,7 +673,7 @@ Examples:
     
     # Set OpenAI key if provided
     if args.key:
-        if not session.set_openai_key(args.key):
+        if not session.set_openai_key(args.key, test_mode=args.t):
             print("❌ Failed to set API key")
             return
     

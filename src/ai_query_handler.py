@@ -7,9 +7,15 @@ import getpass
 
 
 class AIQueryHandler:
-    def __init__(self, api_key):
+    def __init__(self, api_key, test_mode=False):
         self.api_key = api_key
+        self.test_mode = test_mode
         self.base_url = "https://llm-proxy-api.ai.eng.netapp.com"
+    
+    def log_debug(self, message):
+        """Print debug messages only in test mode."""
+        if self.test_mode:
+            print(message)
 
     def load_your_key(self):
         """Load API key - implement as required."""
@@ -26,7 +32,7 @@ class AIQueryHandler:
         try:
             # Test basic internet connectivity
             response = requests.get("https://www.google.com", timeout=5)
-            print("✓ Internet connection: OK")
+            self.log_debug("✓ Internet connection: OK")
         except requests.RequestException:
             print("✗ Internet connection: FAILED")
             return False
@@ -46,7 +52,7 @@ class AIQueryHandler:
             )
 
             if test_response.status_code == 200:
-                print("✓ NetApp LLM Proxy API connection: OK")
+                self.log_debug("✓ NetApp LLM Proxy API connection: OK")
                 return True
             else:
                 print(
@@ -106,7 +112,7 @@ class AIQueryHandler:
     def query(self, user_question, analysis_data, conversation_history=None):
         """Send query to NetApp's LLM proxy API with pcap analysis data and conversation history."""
 
-        print("Testing connectivity...")
+        self.log_debug("Testing connectivity...")
         if not self.test_connection():
             print("\n" + "=" * 60)
             print("NETWORK CONNECTIVITY ISSUE DETECTED")
@@ -140,7 +146,7 @@ Please answer the following question about this network traffic data:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                print(
+                self.log_debug(
                     f"Sending query to NetApp LLM Proxy (attempt {attempt + 1}/{max_retries})..."
                 )
 
@@ -197,7 +203,7 @@ Please answer the following question about this network traffic data:
 
     def append_to_dataset(self, user_question, response):
         """Append the query and response to a JSON file."""
-        print("Appending to dataset...")
+        self.log_debug("Appending to dataset...")
         dataset_file = "dataset.json"
         entry = {"question": user_question, "response": response}
 
@@ -212,7 +218,7 @@ Please answer the following question about this network traffic data:
 
             try:
                 with open(dataset_file, "w") as file:
-                    print(f"Appending to dataset file: {dataset_file}")
+                    self.log_debug(f"Appending to dataset file: {dataset_file}")
                     json.dump(data, file, indent=4)
             except Exception as e:
                 print(f"Error writing to dataset.json: {e}")

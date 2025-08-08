@@ -21,7 +21,8 @@ protocol_classes = {
 
 class SessionManager:
     """Manages session data for OpenAI key, pcap file, parsed data, history, and dataset."""
-    def __init__(self):
+    def __init__(self, test_mode=False):
+        self.test_mode = test_mode  # Store the mode for verbose output control
         self.openai_key = None
         self.pcap_file = None
         self.parsed_data = None
@@ -55,7 +56,7 @@ class SessionManager:
                 "python_version": platform.python_version(),
             }
 
-            print(f"✓ Running on {system}")
+            self.log_debug(f"✓ Running on {system}")
             return details
 
         except Exception as e:
@@ -66,6 +67,11 @@ class SessionManager:
                 "error": str(e),
             }
 
+    def log_debug(self, message):
+        """Print debug messages only in test mode."""
+        if self.test_mode:
+            print(message)
+
     def load_session(self):
         """Load session data from file if it exists."""
         try:
@@ -75,7 +81,7 @@ class SessionManager:
                     self.openai_key = data.get('openai_key')
                     self.pcap_file = data.get('pcap_file')
                     self.parsed_data = data.get('parsed_data')
-                print("✓ Previous session loaded successfully")
+                self.log_debug("✓ Previous session loaded successfully")
         except Exception as e:
             print(f"⚠️  Could not load previous session: {e}")
 
@@ -89,7 +95,7 @@ class SessionManager:
             }
             with open(self.session_file, 'wb') as f:
                 pickle.dump(data, f)
-            print("✓ Session saved successfully")
+            self.log_debug("✓ Session saved successfully")
         except Exception as e:
             print(f"⚠️  Could not save session: {e}")
 
@@ -102,7 +108,7 @@ class SessionManager:
         try:
             if os.path.exists(self.session_file):
                 os.remove(self.session_file)
-            print("✓ Session cleared successfully")
+            self.log_debug("✓ Session cleared successfully")
         except Exception as e:
             print(f"⚠️  Could not clear session file: {e}")
 
@@ -111,7 +117,7 @@ class SessionManager:
         try:
             with open(key_file, 'r') as f:
                 self.openai_key = f.read().strip()
-                print("✓ OpenAI key loaded successfully")
+                self.log_debug("✓ OpenAI key loaded successfully")
                 self.save_session()
         except FileNotFoundError:
             print(f"Error: OpenAI key file '{key_file}' not found.")
@@ -121,7 +127,7 @@ class SessionManager:
     def set_pcap_file(self, pcap_file):
         """Set pcap file path and parse it."""
         if self.pcap_file == pcap_file and self.parsed_data is not None:
-            print("✓ Using cached pcap data (already parsed)")
+            self.log_debug("✓ Using cached pcap data (already parsed)")
             return True
         
         self.pcap_file = pcap_file
@@ -132,7 +138,7 @@ class SessionManager:
         
         try:
             self.parsed_data = self.pcap_analyzer.parse_pcap()
-            print("✓ Pcap file parsed successfully and cached for session")
+            self.log_debug("✓ Pcap file parsed successfully and cached for session")
             self.save_session()
             return True
         except Exception as e:
@@ -173,7 +179,7 @@ class SessionManager:
             try:
                 with open(self.history_file, "r") as file:
                     self.history = json.load(file)
-                    print("✓ History loaded successfully")
+                    self.log_debug("✓ History loaded successfully")
             except json.JSONDecodeError:
                 print("⚠️  Invalid JSON in history.json. Starting with an empty history.")
                 self.history = []
@@ -183,7 +189,7 @@ class SessionManager:
             try:
                 with open(self.dataset_file, "r") as file:
                     self.dataset = json.load(file)
-                    print("✓ Dataset loaded successfully")
+                    self.log_debug("✓ Dataset loaded successfully")
             except json.JSONDecodeError:
                 print("⚠️  Invalid JSON in dataset.json. Starting with an empty dataset.")
                 self.dataset = []
@@ -194,7 +200,7 @@ class SessionManager:
             # Save history.json in the .cache directory
             with open(self.history_file, "w") as file:
                 json.dump(self.history, file, indent=4)
-            print("✓ History saved successfully")
+            self.log_debug("✓ History saved successfully")
         except Exception as e:
             print(f"⚠️  Could not save history.json: {e}")
 
@@ -202,12 +208,12 @@ class SessionManager:
             # Save dataset.json in the main folder
             with open(self.dataset_file, "w") as file:
                 json.dump(self.dataset, file, indent=4)
-            print("✓ Dataset saved successfully")
+            self.log_debug("✓ Dataset saved successfully")
         except Exception as e:
             print(f"⚠️  Could not save dataset.json: {e}")
 
-# Global session manager
-session = SessionManager()
+# Global session manager (will be initialized in main)
+session = None
 
 def read_openai_key(key_file):
     """Read OpenAI API key from file."""
@@ -266,7 +272,9 @@ def interactive_mode(test_mode=False):
     print("💡 Type 'help' for commands or just ask questions about your pcap!")
     print("🚪 Type 'quit' or 'exit' to leave")
     
-    show_session_status()
+    # Only show session status in test mode
+    if test_mode:
+        show_session_status()
 
     # Prompt for a single protocol once per session
     known_protocols = ["NFS", "HTTP", "SMB2"]
@@ -375,9 +383,10 @@ def interactive_mode(test_mode=False):
                         filtered_packets = packets
                         analysis_data = {"packets": filtered_packets}
 
-                    print(f"🔎 Analysing {len(filtered_packets)} packets...")                    
+                    if test_mode:
+                        print(f"🔎 Analysing {len(filtered_packets)} packets...")                    
 
-                    ai_handler = AIQueryHandler(openai_key)
+                    ai_handler = AIQueryHandler(openai_key, test_mode=test_mode)
                     response = ai_handler.query(query, analysis_data, session.conversation_history)
                     
                     print("\n" + "="*50)
@@ -528,10 +537,15 @@ Examples:
     if args.t:
         print("🧪 DEBUG: Running in TEST MODE")
     
+    # Initialize the global session with the correct mode
+    global session
+    session = SessionManager(test_mode=args.t)
+    
     # Handle clear-history request
     if args.clear_history:
+        history_file = ".cache/history.json"
         try:
-            with open(session.history_file, "w") as file:
+            with open(history_file, "w") as file:
                 json.dump([], file, indent=4)
             print("✓ History cleared successfully")
         except Exception as e:
@@ -577,7 +591,7 @@ Examples:
             return
         
         # Initialize AI handler and process query
-        ai_handler = AIQueryHandler(openai_key)
+        ai_handler = AIQueryHandler(openai_key, test_mode=args.t)
         print(f"🤖 Processing query: {args.query}")
         
         try:

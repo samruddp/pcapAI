@@ -491,11 +491,11 @@ def main():
         description='AI-powered pcap file analyzer with session management',
         epilog="""
 Examples:
-  # Interactive mode (recommended)
-  python pcap_ai.py
+  # User mode
+  python pcap_ai.py --key key.txt --pcap file.pcap --u
   
-  # Command-line mode
-  python pcap_ai.py --key key.txt --pcap file.pcap --query "How many packets?"
+  # Test mode
+  python pcap_ai.py --key key.txt --pcap file.pcap --t
   
   # Show session status
   python pcap_Interactive mode (recommended)
@@ -512,7 +512,6 @@ Examples:
     
     parser.add_argument('--pcap', help='Path to pcap file (cached for session)')
     parser.add_argument('--key', help='Path to OpenAI API key file (cached for session)')
-    parser.add_argument('--query', help='Question about the packet trace (single query mode)')
     parser.add_argument('--status', action='store_true', help='Show current session status')
     parser.add_argument('--clear', action='store_true', help='Clear current session')
     parser.add_argument('--clear-history', action='store_true', help='Clear the history file')
@@ -577,124 +576,8 @@ Examples:
             print("❌ Failed to set PCAP file")
             return
     
-    # If query is provided, run single query mode
-    if args.query:
-        # Get session data
-        openai_key = session.get_openai_key()
-        parsed_data = session.get_parsed_data()
-
-        if not openai_key:
-            print("❌ Error: OpenAI key not set for this session.")
-            print("💡 Use --key to set the OpenAI key file")
-            return
-            
-        if not parsed_data:
-            print("❌ Error: No pcap data available.")
-            print("💡 Use --pcap to set the pcap file")
-            return
-        
-        # Initialize AI handler and process query
-        ai_handler = AIQueryHandler(openai_key, test_mode=args.t)
-        if args.t:
-            print(f"🤖 Processing query: {args.query}")
-        else:
-            print("🤖 Processing...")
-        
-        try:
-            response = ai_handler.query(args.query, parsed_data)
-            
-            print("\n" + "="*50)
-            print("🤖 AI RESPONSE")
-            print("="*50)
-            print(response)
-            print("="*50)
-            
-            # In test mode, collect feedback
-            if args.t:
-                # Get feedback rating
-                while True:
-                    try:
-                        feedback = input("\n📊 How would you rate the AI's response? (satisfied/neutral/unsatisfied): ").strip().lower()
-                        if feedback in ['satisfied', 'neutral', 'unsatisfied', 's', 'n', 'u']:
-                            # Normalize to full words
-                            if feedback in ['s', 'satisfied']:
-                                feedback = 'satisfied'
-                            elif feedback in ['n', 'neutral']:
-                                feedback = 'neutral'
-                            elif feedback in ['u', 'unsatisfied']:
-                                feedback = 'unsatisfied'
-                            break
-                        else:
-                            print("❌ Please respond with 'satisfied', 'neutral', or 'unsatisfied'")
-                    except ValueError:
-                        print("❌ Please enter a valid response (satisfied/neutral/unsatisfied)")
-                
-                # Ask for optional reason
-                reason = ""
-                try:
-                    reason_input = input("\n💭 Would you like to provide a reason for your rating? (If not, then press Enter to skip): ").strip()
-                    if reason_input:
-                        reason = reason_input
-                except (KeyboardInterrupt, EOFError):
-                    reason = ""
-                
-                print(f"✓ Thank you for your feedback! Rating: {feedback}")
-                
-                # Update history with metadata and feedback
-                session.history.append({
-                    "session_id": session.session_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "user_details": session.user_details,
-                    "pcap_file": session.pcap_file,
-                    "query": args.query,
-                    "response": response,
-                    "test_mode": True,
-                    "feedback": {
-                        "rating": feedback,
-                        "reason": reason
-                    }
-                })
-                session.dataset.append({
-                    "query": args.query,
-                    "response": response,
-                    "feedback": {
-                        "rating": feedback,
-                        "reason": reason
-                    }
-                })
-                session.conversation_history.append({
-                    "query": args.query,
-                    "response": response
-                })
-            else:
-                # Update history with metadata (no feedback in user mode)
-                session.history.append({
-                    "session_id": session.session_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "user_details": session.user_details,
-                    "pcap_file": session.pcap_file,
-                    "query": args.query,
-                    "response": response,
-                    "test_mode": False
-                })
-                session.dataset.append({
-                    "query": args.query,
-                    "response": response
-                })
-                session.conversation_history.append({
-                    "query": args.query,
-                    "response": response
-                })
-            
-            session.save_history_and_dataset()
-            
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            return
-    
-    # If no query provided or interactive flag set, start interactive mode
-    else:
-        interactive_mode(test_mode=args.t)
+    # Start interactive mode
+    interactive_mode(test_mode=args.t)
 
 if __name__ == "__main__":
     main()

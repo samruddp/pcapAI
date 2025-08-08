@@ -359,7 +359,10 @@ def interactive_mode(test_mode=False):
                     continue
                 
                 # Process the query
-                print(f"🤖 Processing: {query}")
+                if test_mode:
+                    print(f"🤖 Processing: {query}")
+                else:
+                    print("🤖 Processing...")
                 try:
                     if isinstance(parsed_data, str):
                         try:
@@ -592,7 +595,10 @@ Examples:
         
         # Initialize AI handler and process query
         ai_handler = AIQueryHandler(openai_key, test_mode=args.t)
-        print(f"🤖 Processing query: {args.query}")
+        if args.t:
+            print(f"🤖 Processing query: {args.query}")
+        else:
+            print("🤖 Processing...")
         
         try:
             response = ai_handler.query(args.query, parsed_data)

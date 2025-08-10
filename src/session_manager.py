@@ -8,6 +8,7 @@ import getpass
 import os
 from src.pcap_analyzer import PcapAnalyzer
 from src.ai_query_handler import AIQueryHandler
+from src.tool_calling_handler import ToolCallingHandler
 from src.protocols.nfs import NFSProtocol
 from src.protocols.smb import SMBProtocol
 from src.protocols.http import HTTPProtocol
@@ -135,13 +136,33 @@ class SessionManager:
             return False
         return True
 
-    def _initialize_ai_handler(self, test_mode):
-        """Initialize AI handler once when we have the key."""
+    def _initialize_ai_handler(self, test_mode=None):
+        """Initialize AI handler once when we have the key. Choose handler based on PCAP file size."""
         if self.openai_key:
             try:
-                print("🔧 Initializing AI handler...")
-                self.ai_handler = AIQueryHandler(self.openai_key, test_mode=test_mode)
-                print("✓ AI handler initialized and cached for session")
+                # Check if we have a PCAP file and get its size
+                file_size_kb = 0
+                handler_type = "standard"
+                
+                if self.pcap_file and os.path.exists(self.pcap_file):
+                    file_size_bytes = os.path.getsize(self.pcap_file)
+                    file_size_kb = file_size_bytes / 1024
+                    
+                    if file_size_kb > 10:  # 50 KB threshold
+                        handler_type = "tool_calling"
+                        print(f"🔧 Initializing Tool Calling AI handler (PCAP size: {file_size_kb:.1f} KB > 50 KB)...")
+                        self.ai_handler = ToolCallingHandler(self.openai_key, test_mode=test_mode or self.test_mode)
+                        print("✓ Tool Calling AI handler initialized and cached for session")
+                    else:
+                        print(f"🔧 Initializing standard AI handler (PCAP size: {file_size_kb:.1f} KB ≤ 50 KB)...")
+                        self.ai_handler = AIQueryHandler(self.openai_key, test_mode=test_mode or self.test_mode)
+                        print("✓ Standard AI handler initialized and cached for session")
+                else:
+                    # No PCAP file yet, use standard handler
+                    print("🔧 Initializing standard AI handler (no PCAP file yet)...")
+                    self.ai_handler = AIQueryHandler(self.openai_key, test_mode=test_mode or self.test_mode)
+                    print("✓ Standard AI handler initialized and cached for session")
+                    
             except Exception as e:
                 print(f"⚠️  Error initializing AI handler: {e}")
                 self.ai_handler = None
@@ -226,6 +247,12 @@ class SessionManager:
         try:
             self.parsed_data = self.pcap_analyzer.parse_pcap()
             self.log_debug("✓ Pcap file parsed successfully and cached for session")
+            
+            # Reinitialize AI handler based on new file size
+            if self.openai_key:
+                self.ai_handler = None  # Clear existing handler
+                self._initialize_ai_handler()
+            
             self.save_session()
             return True
         except Exception as e:
@@ -246,11 +273,25 @@ class SessionManager:
 
     def get_session_info(self):
         """Get current session information."""
+        # Determine AI handler type
+        ai_handler_type = "None"
+        if self.ai_handler:
+            if hasattr(self.ai_handler, '__class__'):
+                ai_handler_type = "Tool Calling" if "ToolCalling" in self.ai_handler.__class__.__name__ else "Standard"
+        
+        # Get file size if available
+        file_size_kb = 0
+        if self.pcap_file and os.path.exists(self.pcap_file):
+            file_size_bytes = os.path.getsize(self.pcap_file)
+            file_size_kb = file_size_bytes / 1024
+        
         info = {
             "openai_key_set": self.openai_key is not None,
             "pcap_file": self.pcap_file,
             "pcap_parsed": self.parsed_data is not None,
             "ai_handler_ready": self.ai_handler is not None,
+            "ai_handler_type": ai_handler_type,
+            "file_size_kb": file_size_kb,
             "protocol_filter": self.last_protocols,
             "filtered_packets_count": len(self.filtered_packets)
             if self.filtered_packets

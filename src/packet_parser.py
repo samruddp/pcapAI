@@ -33,7 +33,6 @@ class PacketParser:
         parsed_packet = {
             "metadata": self._extract_metadata(packet),
             "layers": {},
-            "summary": self._generate_summary(packet),
         }
 
         # Parse each layer in the packet
@@ -80,43 +79,6 @@ class PacketParser:
             metadata["error"] = f"Error extracting metadata: {str(e)}"
 
         return metadata
-
-    def _generate_summary(self, packet) -> str:
-        """Generate a human-readable summary of the packet."""
-        try:
-            summary_parts = []
-
-            # Add timestamp if available
-            if hasattr(packet, "sniff_time"):
-                summary_parts.append(f"Time: {packet.sniff_time}")
-
-            # Add source and destination if IP layer exists
-            if hasattr(packet, "ip"):
-                src = packet.ip.src
-                dst = packet.ip.dst
-
-                # Add ports if TCP or UDP
-                if hasattr(packet, "tcp"):
-                    src += f":{packet.tcp.srcport}"
-                    dst += f":{packet.tcp.dstport}"
-                elif hasattr(packet, "udp"):
-                    src += f":{packet.udp.srcport}"
-                    dst += f":{packet.udp.dstport}"
-
-                summary_parts.append(f"{src} → {dst}")
-
-            # Add protocol
-            if hasattr(packet, "highest_layer"):
-                summary_parts.append(f"Protocol: {packet.highest_layer}")
-
-            # Add length
-            if hasattr(packet, "length"):
-                summary_parts.append(f"Length: {packet.length}")
-
-            return " | ".join(summary_parts)
-
-        except Exception:
-            return "Summary generation failed"
 
     def _parse_ethernet_layer(self, layer) -> Dict[str, Any]:
         """Parse Ethernet layer."""
@@ -383,7 +345,3 @@ class PacketParser:
                 )
 
         return json.dumps(parsed_packets, default=str)
-
-    def get_packet_summary(self, packet) -> str:
-        """Get a brief summary of the packet."""
-        return self._generate_summary(packet)

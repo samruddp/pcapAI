@@ -3,7 +3,7 @@ import sys
 import os
 import json
 from datetime import datetime
-from session_manager import SessionManager
+from src.session_manager import SessionManager
 
 # Global session manager (will be initialized in main)
 session = None

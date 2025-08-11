@@ -395,6 +395,7 @@ The filter will be automatically extracted and applied to the pcap file using py
                 updated_analysis_data = result["filtered_data"]
                 print(f"🔄 Updated analysis data with filtered results from {function_name}")
                 self.log_debug(f"📊 Updated analysis data with filtered results")
+                print(f"📊 Filtered data contains {len(updated_analysis_data.get('packets', []))} packets")
             
             tool_results.append({
                 "tool_call_id": tool_call["id"],

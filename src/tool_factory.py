@@ -6,8 +6,8 @@ from src.tools import Filter
 class ToolFactory:
     """Factory class for managing and executing tools."""
     
-    def __init__(self):
-        self.filter = Filter()
+    def __init__(self, session=None):
+        self.filter = Filter(session=session)
     
     def get_tool_definitions(self):
         """Get OpenAI function definitions for all tools."""

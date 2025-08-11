@@ -1,5 +1,11 @@
 """
-Session Manager for pcapAI - Manages session data, history, and AI handler caching
+Session Maprotocol_classes = {
+    "NFS": NFSProtocol(),
+    "SMB": SMBProtocol(),
+    "SMB2": SMBProtocol(),  # SMB2 uses the same handler as SMB
+    "HTTP": HTTPProtocol(),
+    # Add more as needed
+}for pcapAI - Manages session data, history, and AI handler caching
 """
 import json
 import pickle
@@ -15,7 +21,7 @@ from src.protocols.http import HTTPProtocol
 
 protocol_classes = {
     "NFS": NFSProtocol(),
-    "SMB": SMBProtocol(),
+    "SMB2": SMBProtocol(),
     "HTTP": HTTPProtocol(),
     # Add more as needed
 }
@@ -151,7 +157,7 @@ class SessionManager:
                     if file_size_kb > 10:  # 50 KB threshold
                         handler_type = "tool_calling"
                         print(f"🔧 Initializing Tool Calling AI handler (PCAP size: {file_size_kb:.1f} KB > 50 KB)...")
-                        self.ai_handler = ToolCallingHandler(self.openai_key, test_mode=test_mode or self.test_mode)
+                        self.ai_handler = ToolCallingHandler(self.openai_key, test_mode=test_mode or self.test_mode, session=self)
                         print("✓ Tool Calling AI handler initialized and cached for session")
                     else:
                         print(f"🔧 Initializing standard AI handler (PCAP size: {file_size_kb:.1f} KB ≤ 50 KB)...")

@@ -4,15 +4,20 @@ import pip_system_certs.wrapt_requests
 import requests
 import os
 import getpass
+import pyshark
+import re
 from src.tool_factory import ToolFactory
+from src.packet_parser import PacketParser
 
 
 class ToolCallingHandler:
-    def __init__(self, api_key, test_mode=False):
+    def __init__(self, api_key, test_mode=False, session=None):
         self.api_key = api_key
         self.test_mode = test_mode
+        self.session = session  # Store reference to session manager
         self.base_url = "https://llm-proxy-api.ai.eng.netapp.com"
-        self.tool_factory = ToolFactory()
+        self.tool_factory = ToolFactory(session=session)  # Pass session to tool factory
+        self.packet_parser = PacketParser()  # Initialize packet parser
     
     def log_debug(self, message):
         """Print debug messages only in test mode."""
@@ -75,6 +80,103 @@ class ToolCallingHandler:
         """Execute a tool function and return results."""
         return self.tool_factory.execute_tool(tool_name, arguments, analysis_data)
 
+    def extract_pyshark_filter(self, ai_response):
+        """Extract pyshark filter string from AI response."""
+        print(f"🔍 Extracting pyshark filter from AI response...")
+        
+        # Common patterns to look for pyshark filters
+        patterns = [
+            r'filter[:\s]*["\']([^"\']+)["\']',  # filter: "tcp.port == 80"
+            r'display_filter[:\s]*["\']([^"\']+)["\']',  # display_filter: "nfs"
+            r'pyshark filter[:\s]*["\']([^"\']+)["\']',  # pyshark filter: "smb2"
+            r'Filter[:\s]*["\']([^"\']+)["\']',  # Filter: "http"
+            r'`([^`]+)`',  # backtick enclosed filters
+            r'"([a-zA-Z0-9_\.=<>!\s&|()]+)"',  # quoted strings that look like filters
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, ai_response, re.IGNORECASE)
+            for match in matches:
+                # Basic validation - should contain protocol or field names
+                if any(keyword in match.lower() for keyword in ['nfs', 'smb', 'smb2', 'http', 'tcp', 'udp', 'ip', 'port', '==', '!=', '&&', '||']):
+                    print(f"✅ Found potential pyshark filter: {match}")
+                    return match.strip()
+        
+        # If no specific filter found, look for protocol names
+        protocol_patterns = [
+            r'\b(nfs)\b',
+            r'\b(smb2?)\b', 
+            r'\b(http)\b',
+            r'\b(tcp\.port\s*==\s*\d+)\b',
+            r'\b(udp\.port\s*==\s*\d+)\b',
+        ]
+        
+        for pattern in protocol_patterns:
+            match = re.search(pattern, ai_response, re.IGNORECASE)
+            if match:
+                filter_str = match.group(1).lower()
+                print(f"✅ Found protocol-based filter: {filter_str}")
+                return filter_str
+        
+        print("❌ No pyshark filter found in AI response")
+        return None
+
+    def apply_pyshark_filter(self, filter_string):
+        """Apply pyshark filter to the pcap file and return filtered packets as JSON."""
+        if not self.session or not self.session.pcap_file:
+            print("❌ No pcap file available in session")
+            return None
+            
+        if not filter_string:
+            print("❌ No filter string provided")
+            return None
+            
+        pcap_file = self.session.pcap_file
+        print(f"🔧 Applying pyshark filter '{filter_string}' to {pcap_file}")
+        
+        try:
+            # Use pyshark FileCapture with display filter
+            capture = pyshark.FileCapture(pcap_file, display_filter=filter_string)
+            
+            # Convert packets to list
+            filtered_packets = list(capture)
+            
+            capture.close()
+            
+            print(f"✅ Filtered capture complete: {len(filtered_packets)} packets found")
+            
+            if not filtered_packets:
+                print("❌ No packets matched the filter")
+                return None
+            
+            # Convert to JSON using packet parser
+            print("🔄 Converting filtered packets to JSON...")
+            json_data = self.packet_parser.parse_packets_to_json(filtered_packets)
+            
+            # Parse the JSON to get packet list
+            parsed_packets = json.loads(json_data)
+            
+            print(f"✅ Successfully converted {len(parsed_packets)} packets to JSON")
+            
+            return {
+                "status": "success",
+                "filter_applied": filter_string,
+                "total_packets": len(parsed_packets),
+                "packets": parsed_packets,
+                "message": f"Applied pyshark filter '{filter_string}' and found {len(parsed_packets)} matching packets"
+            }
+            
+        except Exception as e:
+            error_msg = f"Error applying pyshark filter: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {
+                "status": "error",
+                "filter_applied": filter_string,
+                "error": error_msg,
+                "total_packets": 0,
+                "packets": []
+            }
+
     def generate_offline_response(self, user_question, analysis_data):
         """Generate a basic response using only the analysis data when AI is unavailable."""
         protocols = analysis_data.get("protocols", {})
@@ -128,14 +230,24 @@ class ToolCallingHandler:
 
         # Prepare context for AI with tool calling
         context = f"""
-You are an expert network analyst with access to a tool for filtering NFS packets.
+You are an expert network analyst with access to tools for filtering network packets.
 You have been provided with analysis data from a pcap (packet capture) file.
 You have a bunch of tools available to filter the input data and use it for generating the response.
 
-Current Analysis Data:
-{json.dumps(analysis_data, default=str)}
+Your primary objective is to return a pyshark filter as a string output based on the user's request.
 
-Please answer the user's question using the provided analysis data. If the user requests NFS filtering, use the filter_nfs_packets tool.
+Current session context:
+- Protocol focus: {', '.join(self.session.last_protocols) if self.session and self.session.last_protocols else 'All protocols'}
+
+Please analyze the user's question and the provided packet data, then return an appropriate pyshark filter string that would capture the packets matching their criteria. Use the available filtering tools to analyze the data and construct the most accurate filter.
+
+IMPORTANT: Always include the pyshark filter in your response in a clear format, for example:
+- Filter: "nfs.procedure_v3 == 7"
+- Filter: "smb2.cmd == 5"  
+- Filter: "tcp.port == 80"
+- Filter: "ip.addr == 192.168.1.100"
+
+The filter will be automatically extracted and applied to the pcap file using pyshark FileCapture API.
 """
 
         # Build messages with previous context
@@ -182,6 +294,7 @@ Please answer the user's question using the provided analysis data. If the user 
                     message = result["choices"][0]["message"]
                     
                     print(f"✅ API Response received successfully")
+                    print(message)
                     print(f"🔍 Response has tool_calls: {bool(message.get('tool_calls'))}")
                     
                     # Check if the AI wants to call tools
@@ -189,11 +302,38 @@ Please answer the user's question using the provided analysis data. If the user 
                         print(f"🔧 Tool calls detected: {len(message['tool_calls'])} tools to execute")
                         return self._handle_tool_calls(message, analysis_data, user_question, messages, tools)
                     else:
-                        # No tools called, return direct response
-                        print("💬 No tool calls - returning direct response")
+                        # No tools called, check for pyshark filter in response
+                        print("💬 No tool calls - checking for pyshark filter in direct response")
                         response_content = message["content"]
-                        self.append_to_dataset(user_question, response_content)
-                        return response_content
+                        
+                        # Extract and apply pyshark filter if found
+                        pyshark_filter = self.extract_pyshark_filter(response_content)
+                        if pyshark_filter:
+                            print(f"� Found pyshark filter in response: {pyshark_filter}")
+                            filter_result = self.apply_pyshark_filter(pyshark_filter)
+                            
+                            if filter_result and filter_result.get("status") == "success":
+                                # Enhance response with filter results
+                                enhanced_response = f"{response_content}\n\n--- Pyshark Filter Applied ---\n"
+                                enhanced_response += f"Filter: {pyshark_filter}\n"
+                                enhanced_response += f"Packets found: {filter_result.get('total_packets', 0)}\n"
+                                enhanced_response += f"Status: {filter_result.get('message', 'Filter applied successfully')}"
+                                
+                                self.append_to_dataset(user_question, enhanced_response)
+                                return enhanced_response
+                            else:
+                                # Filter failed, return original response with error note
+                                error_msg = filter_result.get('error', 'Unknown error') if filter_result else 'Filter extraction failed'
+                                enhanced_response = f"{response_content}\n\n--- Pyshark Filter Error ---\n"
+                                enhanced_response += f"Attempted filter: {pyshark_filter}\n"
+                                enhanced_response += f"Error: {error_msg}"
+                                
+                                self.append_to_dataset(user_question, enhanced_response)
+                                return enhanced_response
+                        else:
+                            print("ℹ️ No pyshark filter found in response")
+                            self.append_to_dataset(user_question, response_content)
+                            return response_content
                         
                 else:
                     print(f"API error: HTTP {response.status_code}")
@@ -386,11 +526,57 @@ Summarize your findings from the analysis and provide a clear, actionable respon
                 result = final_response.json()
                 response_content = result["choices"][0]["message"]["content"]
                 print(f"✅ Round 3 successful - Final response length: {len(response_content)} characters")
+                
+                # Extract and apply pyshark filter from final response
+                pyshark_filter = self.extract_pyshark_filter(response_content)
+                if pyshark_filter:
+                    print(f"🔍 Found pyshark filter in final response: {pyshark_filter}")
+                    filter_result = self.apply_pyshark_filter(pyshark_filter)
+                    
+                    if filter_result and filter_result.get("status") == "success":
+                        # Enhance response with filter results
+                        enhanced_response = f"{response_content}\n\n--- Pyshark Filter Applied ---\n"
+                        enhanced_response += f"Filter: {pyshark_filter}\n"
+                        enhanced_response += f"Packets found: {filter_result.get('total_packets', 0)}\n"
+                        enhanced_response += f"Status: {filter_result.get('message', 'Filter applied successfully')}\n"
+                        enhanced_response += f"Filtered packet data has been generated and is available for analysis."
+                        
+                        print("🎉 TOOL CALLING WORKFLOW COMPLETED SUCCESSFULLY WITH PYSHARK FILTER")
+                        print("="*60)
+                        self.log_debug(f"✓ Round 3 complete - Final response with pyshark filter ready")
+                        self.append_to_dataset(user_question, enhanced_response)
+                        return enhanced_response
+                    else:
+                        # Filter failed, return original response with error note
+                        error_msg = filter_result.get('error', 'Unknown error') if filter_result else 'Filter extraction failed'
+                        enhanced_response = f"{response_content}\n\n--- Pyshark Filter Error ---\n"
+                        enhanced_response += f"Attempted filter: {pyshark_filter}\n"
+                        enhanced_response += f"Error: {error_msg}"
+                        
+                        print("🎉 TOOL CALLING WORKFLOW COMPLETED (with filter error)")
+                        print("="*60)
+                        self.log_debug(f"✓ Round 3 complete - Final response with filter error")
+                        self.append_to_dataset(user_question, enhanced_response)
+                        return enhanced_response
+                else:
+                    print("ℹ️ No pyshark filter found in final response")
+                    
                 print("🎉 TOOL CALLING WORKFLOW COMPLETED SUCCESSFULLY")
                 print("="*60)
                 self.log_debug(f"✓ Round 3 complete - Final response ready")
                 self.append_to_dataset(user_question, response_content)
                 return response_content
+            elif final_response.status_code == 400:
+                error_response = final_response.json()
+                if "ContextWindowExceededError" in str(error_response):
+                    graceful_message = (
+                        "The analysis request resulted in too much data for processing. "
+                        "Please try a more specific question to help narrow down the analysis. "
+                    )
+                    print("⚠️ Context window exceeded - requesting more specific query")
+                    self.log_debug("Context window exceeded, returning graceful message")
+                    self.append_to_dataset(user_question, graceful_message)
+                    return graceful_message
             else:
                 print(f"❌ Round 3 failed: HTTP {final_response.status_code}")
                 print("🔄 Falling back to tool results summary")
@@ -412,20 +598,20 @@ Summarize your findings from the analysis and provide a clear, actionable respon
         """Create a summary from tool results when AI is unavailable."""
         summary = "Tool Analysis Results:\n\n"
         
-        for tool_result in tool_results:
-            function_name = tool_result["function_name"]
-            result = tool_result["result"]
+        # for tool_result in tool_results:
+        #     function_name = tool_result["function_name"]
+        #     result = tool_result["result"]
             
-            summary += f"🔧 {function_name}:\n"
-            if isinstance(result, dict):
-                for key, value in result.items():
-                    if key != "error":
-                        summary += f"  • {key}: {value}\n"
-                if "error" in result:
-                    summary += f"  ❌ Error: {result['error']}\n"
-            else:
-                summary += f"  • Result: {result}\n"
-            summary += "\n"
+        #     summary += f"🔧 {function_name}:\n"
+        #     if isinstance(result, dict):
+        #         for key, value in result.items():
+        #             if key != "error":
+        #                 summary += f"  • {key}: {value}\n"
+        #         if "error" in result:
+        #             summary += f"  ❌ Error: {result['error']}\n"
+        #     else:
+        #         summary += f"  • Result: {result}\n"
+        #     summary += "\n"
         
         return summary.strip()
 

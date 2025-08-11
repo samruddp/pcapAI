@@ -2,10 +2,92 @@
 Unified filtering tool with multiple filter methods.
 """
 import json
+import pyshark
+from src.packet_parser import PacketParser
 
 
 class Filter:
     """Unified filter tool with multiple filtering methods."""
+    
+    def __init__(self, session=None):
+        """Initialize filter with optional session reference for pcap file access."""
+        self.session = session
+        self.packet_parser = PacketParser()
+    
+    def apply_pyshark_filter(self, filter_string, max_packets=1000):
+        """Apply pyshark filter directly to the pcap file."""
+        if not self.session or not self.session.pcap_file:
+            print("[DEBUG] No pcap file available in session")
+            return {
+                "status": "error",
+                "message": "No pcap file available",
+                "packets_filtered": 0
+            }
+            
+        if not filter_string:
+            print("[DEBUG] No filter string provided")
+            return {
+                "status": "error", 
+                "message": "No filter string provided",
+                "packets_filtered": 0
+            }
+            
+        pcap_file = self.session.pcap_file
+        print(f"[DEBUG] Applying pyshark filter '{filter_string}' to {pcap_file}")
+        
+        try:
+            # Use pyshark FileCapture with display filter
+            capture = pyshark.FileCapture(pcap_file, display_filter=filter_string)
+            
+            # Convert packets to list
+            filtered_packets = list(capture)
+            capture.close()
+            
+            print(f"[DEBUG] Filtered capture complete: {len(filtered_packets)} packets found")
+            
+            if not filtered_packets:
+                print("[DEBUG] No packets matched the filter")
+                return {
+                    "status": "success",
+                    "message": f"No packets matched filter '{filter_string}'",
+                    "packets_filtered": 0,
+                    "filter_applied": filter_string,
+                    "filtered_data": {"packets": [], "total_packets": 0}
+                }
+            
+            # Convert to JSON using packet parser
+            print("[DEBUG] Converting filtered packets to JSON...")
+            json_data = self.packet_parser.parse_packets_to_json(filtered_packets)
+            
+            # Parse the JSON to get packet list
+            parsed_packets = json.loads(json_data)
+            
+            print(f"[DEBUG] Successfully converted {len(parsed_packets)} packets to JSON")
+            
+            filtered_data = {
+                "total_packets": len(parsed_packets),
+                "filter_type": f"PyShark Filter: {filter_string}",
+                "filter_applied": filter_string,
+                "packets": parsed_packets
+            }
+            
+            return {
+                "status": "success",
+                "message": f"Applied pyshark filter '{filter_string}' and found {len(parsed_packets)} matching packets",
+                "packets_filtered": len(parsed_packets),
+                "filter_applied": filter_string,
+                "filtered_data": filtered_data
+            }
+            
+        except Exception as e:
+            error_msg = f"Error applying pyshark filter: {str(e)}"
+            print(f"[DEBUG] {error_msg}")
+            return {
+                "status": "error",
+                "message": error_msg,
+                "filter_applied": filter_string,
+                "packets_filtered": 0
+            }
     
     def get_tool_definitions(self):
         """Return all OpenAI function definitions for filtering tools."""
@@ -14,13 +96,17 @@ class Filter:
                 "type": "function",
                 "function": {
                     "name": "filter_packets_by_protocol",
-                    "description": "Filter packets by protocol type (e.g., nfs, smb2, http) and return them as a JSON object",
+                    "description": "Filter packets by protocol type (e.g., nfs, smb2, http) using pyshark filter or protocol name",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "protocol": {
                                 "type": "string",
                                 "description": "Protocol to filter by (e.g., 'nfs', 'smb2', 'http', 'tcp', 'udp')"
+                            },
+                            "pyshark_filter": {
+                                "type": "string",
+                                "description": "Optional: Direct pyshark filter string (e.g., 'nfs', 'smb2', 'tcp.port == 80'). If provided, this takes precedence over protocol parameter."
                             }
                         },
                         "required": ["protocol"]
@@ -31,7 +117,7 @@ class Filter:
                 "type": "function",
                 "function": {
                     "name": "filter_packets_by_ip",
-                    "description": "Filter packets from a specific source IP address for any protocol and return them as a JSON object",
+                    "description": "Filter packets from a specific source IP address using pyshark filter or IP address",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -42,6 +128,10 @@ class Filter:
                             "protocol": {
                                 "type": "string",
                                 "description": "Optional: Protocol to filter by (e.g., 'nfs', 'smb2', 'http'). If not specified, filters all protocols."
+                            },
+                            "pyshark_filter": {
+                                "type": "string",
+                                "description": "Optional: Direct pyshark filter string (e.g., 'ip.src == 192.168.1.100', 'ip.addr == 192.168.1.100 and nfs'). If provided, this takes precedence over other parameters."
                             }
                         },
                         "required": ["source_ip"]
@@ -52,7 +142,7 @@ class Filter:
                 "type": "function",
                 "function": {
                     "name": "filter_packets_by_operation",
-                    "description": "Filter packets by protocol operation/procedure (e.g., write, read, create, lookup) and return them as a JSON object",
+                    "description": "Filter packets by protocol operation/procedure using pyshark filter",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -60,12 +150,16 @@ class Filter:
                                 "type": "string",
                                 "description": "Operation/procedure to filter by (e.g., 'write', 'read', 'create', 'lookup', 'open', 'close')"
                             },
+                            "pyshark_filter": {
+                                "type": "string",
+                                "description": "PyShark filter to be applied on pcap file based on operation. For example 'smb2.cmd == 5' for smb2 create request, 'nfs.procedure_v3 == 7' for NFS write"
+                            },
                             "protocol": {
                                 "type": "string",
                                 "description": "Optional: Protocol to filter by (e.g., 'nfs', 'smb2', 'http'). If not specified, searches all protocols."
                             }
                         },
-                        "required": ["operation"]
+                        "required": ["pyshark_filter"]
                     }
                 }
             }
@@ -73,6 +167,11 @@ class Filter:
     
     def execute_tool(self, tool_name, arguments, analysis_data):
         """Execute the specified filter method."""
+        print(f"[DEBUG] Executing filter tool: {tool_name}")
+        print(f"[DEBUG] Tool arguments: {arguments}")
+        print(f"[DEBUG] Analysis data keys: {list(analysis_data.keys())}")
+        print(f"[DEBUG] Total packets in analysis_data: {len(analysis_data.get('packets', []))}")
+        
         if tool_name == "filter_packets_by_protocol":
             return self.filter_by_protocol(arguments, analysis_data)
         elif tool_name == "filter_packets_by_ip":
@@ -80,6 +179,7 @@ class Filter:
         elif tool_name == "filter_packets_by_operation":
             return self.filter_by_operation(arguments, analysis_data)
         else:
+            print(f"[DEBUG] ERROR: Unknown filter tool: {tool_name}")
             return {
                 "status": "error",
                 "message": f"Unknown filter tool: {tool_name}",
@@ -88,236 +188,99 @@ class Filter:
     
     def filter_by_protocol(self, arguments, analysis_data):
         """Filter packets by protocol type."""
-        packets = analysis_data.get("packets", [])
         protocol_filter = arguments.get("protocol", "").lower()
+        pyshark_filter = arguments.get("pyshark_filter", "").strip()
         
-        if not protocol_filter:
-            return {
-                "status": "error",
-                "message": "Protocol is required for this filter",
-                "packets_filtered": 0
-            }
+        print(f"[DEBUG] Protocol Filter - Input: protocol={protocol_filter}, pyshark_filter={pyshark_filter}")
         
-        filtered_packets = []
+        # If pyshark filter is provided, use it directly
+        if pyshark_filter:
+            print(f"[DEBUG] Using pyshark filter: {pyshark_filter}")
+            return self.apply_pyshark_filter(pyshark_filter)
         
-        for packet in packets:
-            if isinstance(packet, dict):
-                # Check for protocol in layers
-                layers = packet.get("layers", {})
-                metadata = packet.get("metadata", {})
-                
-                # Check if this packet matches the protocol
-                is_match = False
-                
-                # Check in layers
-                if protocol_filter in [layer.lower() for layer in layers.keys()]:
-                    is_match = True
-                # Check in metadata highest layer
-                elif metadata.get("highest_layer", "").lower() == protocol_filter:
-                    is_match = True
-                # Check for protocol variations (e.g., smb2 might be stored as smb)
-                elif protocol_filter == "smb2" and "smb" in [layer.lower() for layer in layers.keys()]:
-                    is_match = True
-                # Check for common protocol aliases
-                elif protocol_filter == "http" and any(layer.lower() in ["http", "https"] for layer in layers.keys()):
-                    is_match = True
-                
-                if is_match:
-                    filtered_packets.append(packet)
+        # Fallback to protocol name as pyshark filter
+        if protocol_filter:
+            print(f"[DEBUG] Using protocol as pyshark filter: {protocol_filter}")
+            return self.apply_pyshark_filter(protocol_filter)
         
-        # Return filtered data as JSON object
-        filtered_data = {
-            "total_packets": len(filtered_packets),
-            "filter_type": f"{protocol_filter.upper()} Protocol",
-            "protocol_filter": protocol_filter,
-            "packets": filtered_packets
-        }
-        
+        print("[DEBUG] Protocol Filter - ERROR: No protocol or filter specified")
         return {
-            "status": "success",
-            "message": f"Filtered {len(filtered_packets)} {protocol_filter.upper()} packets",
-            "packets_filtered": len(filtered_packets),
-            "protocol_filter": protocol_filter,
-            "filtered_data": filtered_data
+            "status": "error",
+            "message": "Protocol or pyshark_filter is required for this filter",
+            "packets_filtered": 0
         }
     
     def filter_by_ip(self, arguments, analysis_data):
         """Filter packets by source IP address, optionally for a specific protocol."""
-        packets = analysis_data.get("packets", [])
         source_ip_filter = arguments.get("source_ip")
         protocol_filter = arguments.get("protocol", "").lower()
+        pyshark_filter = arguments.get("pyshark_filter", "").strip()
+        
+        print(f"[DEBUG] IP Filter - Input: source_ip={source_ip_filter}, protocol={protocol_filter}, pyshark_filter={pyshark_filter}")
+        
+        # If pyshark filter is provided, use it directly
+        if pyshark_filter:
+            print(f"[DEBUG] Using pyshark filter: {pyshark_filter}")
+            return self.apply_pyshark_filter(pyshark_filter)
         
         if not source_ip_filter:
+            print("[DEBUG] IP Filter - ERROR: No source IP specified")
             return {
                 "status": "error",
                 "message": "Source IP address is required for this filter",
                 "packets_filtered": 0
             }
         
-        filtered_packets = []
+        # Build pyshark filter from IP and protocol
+        filter_parts = [f"ip.src == {source_ip_filter}"]
+        if protocol_filter:
+            filter_parts.append(protocol_filter)
         
-        for packet in packets:
-            if isinstance(packet, dict):
-                # Check protocol if specified
-                protocol_match = True
-                if protocol_filter:
-                    layers = packet.get("layers", {})
-                    metadata = packet.get("metadata", {})
-                    
-                    protocol_match = False
-                    # Check in layers
-                    if protocol_filter in [layer.lower() for layer in layers.keys()]:
-                        protocol_match = True
-                    # Check in metadata highest layer
-                    elif metadata.get("highest_layer", "").lower() == protocol_filter:
-                        protocol_match = True
-                    # Check for protocol variations
-                    elif protocol_filter == "smb2" and "smb" in [layer.lower() for layer in layers.keys()]:
-                        protocol_match = True
-                    elif protocol_filter == "http" and any(layer.lower() in ["http", "https"] for layer in layers.keys()):
-                        protocol_match = True
-                
-                if protocol_match:
-                    # Check source IP address
-                    packet_source_ip = None
-                    layers = packet.get("layers", {})
-                    metadata = packet.get("metadata", {})
-                    
-                    # Try to get source IP from different possible locations
-                    if "ip" in layers:
-                        ip_layer = layers.get("ip", {})
-                        packet_source_ip = ip_layer.get("src") or ip_layer.get("src_host")
-                    
-                    # Also check metadata
-                    if not packet_source_ip:
-                        packet_source_ip = metadata.get("src_ip") or metadata.get("source_ip")
-                    
-                    # Also check top-level packet fields
-                    if not packet_source_ip:
-                        packet_source_ip = packet.get("src_ip") or packet.get("source_ip")
-                    
-                    # Add packet if source IP matches filter
-                    if packet_source_ip == source_ip_filter:
-                        filtered_packets.append(packet)
+        constructed_filter = " and ".join(filter_parts)
+        print(f"[DEBUG] Constructed pyshark filter: {constructed_filter}")
         
-        # Return filtered data as JSON object
-        protocol_text = f" {protocol_filter.upper()}" if protocol_filter else ""
-        filter_type = f"{protocol_text} Packets from Source IP: {source_ip_filter}".strip()
-        
-        filtered_data = {
-            "total_packets": len(filtered_packets),
-            "filter_type": filter_type,
-            "source_ip_filter": source_ip_filter,
-            "protocol_filter": protocol_filter if protocol_filter else None,
-            "packets": filtered_packets
-        }
-        
-        return {
-            "status": "success",
-            "message": f"Filtered {len(filtered_packets)}{protocol_text.lower()} packets from source IP {source_ip_filter}",
-            "packets_filtered": len(filtered_packets),
-            "source_ip_filter": source_ip_filter,
-            "protocol_filter": protocol_filter,
-            "filtered_data": filtered_data
-        }
+        return self.apply_pyshark_filter(constructed_filter)
     
     def filter_by_operation(self, arguments, analysis_data):
-        """Filter packets by operation/procedure type."""
-        packets = analysis_data.get("packets", [])
+        """Filter packets by operation/procedure type using pyshark filter."""
         operation_filter = arguments.get("operation", "").lower()
         protocol_filter = arguments.get("protocol", "").lower()
+        pyshark_filter = arguments.get("pyshark_filter", "").strip()
         
-        if not operation_filter:
-            return {
-                "status": "error",
-                "message": "Operation is required for this filter",
-                "packets_filtered": 0
+        print(f"[DEBUG] Operation Filter - Input: operation={operation_filter}, protocol={protocol_filter}, pyshark_filter={pyshark_filter}")
+        
+        # If pyshark filter is provided, use it directly
+        if pyshark_filter:
+            print(f"[DEBUG] Using provided pyshark filter: {pyshark_filter}")
+            return self.apply_pyshark_filter(pyshark_filter)
+        
+        # Try to construct pyshark filter from operation and protocol
+        if operation_filter and protocol_filter:
+            # Map common operations to pyshark filters
+            operation_mappings = {
+                "nfs": {
+                    "write": "nfs.procedure_v3 == 7",
+                    "read": "nfs.procedure_v3 == 6", 
+                    "create": "nfs.procedure_v3 == 8",
+                    "lookup": "nfs.procedure_v3 == 3"
+                },
+                "smb2": {
+                    "create": "smb2.cmd == 5",
+                    "read": "smb2.cmd == 8",
+                    "write": "smb2.cmd == 9",
+                    "close": "smb2.cmd == 6",
+                    "open": "smb2.cmd == 5"  # Same as create
+                }
             }
+            
+            if protocol_filter in operation_mappings and operation_filter in operation_mappings[protocol_filter]:
+                constructed_filter = operation_mappings[protocol_filter][operation_filter]
+                print(f"[DEBUG] Constructed pyshark filter from operation mapping: {constructed_filter}")
+                return self.apply_pyshark_filter(constructed_filter)
         
-        filtered_packets = []
-        
-        for packet in packets:
-            if isinstance(packet, dict):
-                layers = packet.get("layers", {})
-                metadata = packet.get("metadata", {})
-                
-                # First check protocol if specified
-                protocol_match = True
-                if protocol_filter:
-                    protocol_match = False
-                    # Check in layers
-                    if protocol_filter in [layer.lower() for layer in layers.keys()]:
-                        protocol_match = True
-                    # Check in metadata highest layer
-                    elif metadata.get("highest_layer", "").lower() == protocol_filter:
-                        protocol_match = True
-                    # Check for protocol variations
-                    elif protocol_filter == "smb2" and "smb" in [layer.lower() for layer in layers.keys()]:
-                        protocol_match = True
-                    elif protocol_filter == "http" and any(layer.lower() in ["http", "https"] for layer in layers.keys()):
-                        protocol_match = True
-                
-                if protocol_match:
-                    # Check for operation in packet data
-                    operation_match = False
-                    
-                    # Check in all layers for operation/procedure information
-                    for layer_name, layer_data in layers.items():
-                        if isinstance(layer_data, dict):
-                            # Check for common operation field names
-                            for field in ["procedure", "operation", "opcode", "command", "method", "request_type"]:
-                                if field in layer_data:
-                                    field_value = str(layer_data[field]).lower()
-                                    if operation_filter in field_value:
-                                        operation_match = True
-                                        break
-                            
-                            # Also check in nested fields
-                            for key, value in layer_data.items():
-                                if isinstance(value, (str, int)):
-                                    if operation_filter in str(value).lower():
-                                        operation_match = True
-                                        break
-                            
-                            if operation_match:
-                                break
-                    
-                    # Check in metadata for operation info
-                    if not operation_match:
-                        for key, value in metadata.items():
-                            if isinstance(value, (str, int)):
-                                if operation_filter in str(value).lower():
-                                    operation_match = True
-                                    break
-                    
-                    # Check in top-level packet fields
-                    if not operation_match:
-                        for key, value in packet.items():
-                            if key not in ["layers", "metadata"] and isinstance(value, (str, int)):
-                                if operation_filter in str(value).lower():
-                                    operation_match = True
-                                    break
-                    
-                    if operation_match:
-                        filtered_packets.append(packet)
-        
-        # Return filtered data as JSON object
-        protocol_text = f" {protocol_filter.upper()}" if protocol_filter else ""
-        filter_type = f"{protocol_text} {operation_filter.upper()} Operations".strip()
-        
-        filtered_data = {
-            "total_packets": len(filtered_packets),
-            "filter_type": filter_type,
-            "operation_filter": operation_filter,
-            "protocol_filter": protocol_filter if protocol_filter else None,
-            "packets": filtered_packets
-        }
-        
+        print("[DEBUG] Operation Filter - ERROR: No pyshark filter provided and unable to construct from operation/protocol")
         return {
-            "status": "success",
-            "message": f"Filtered {len(filtered_packets)}{protocol_text.lower()} {operation_filter.upper()} operation packets",
-            "packets_filtered": len(filtered_packets),
-            "operation_filter": operation_filter,
-            "protocol_filter": protocol_filter,
-            "filtered_data": filtered_data
+            "status": "error",
+            "message": "pyshark_filter is required for operation filtering, or provide valid operation/protocol combination",
+            "packets_filtered": 0
         }

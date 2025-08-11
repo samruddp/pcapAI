@@ -15,7 +15,11 @@ class PcapAnalyzer:
         cap = pyshark.FileCapture(self.pcap_file)
         packets = list(cap)
         cap.close()
-        return parser.parse_packets_to_json(packets)
+        parsed_json_packets = parser.parse_packets_to_json(packets)
+        # save first 2 parsed json packets in sample_data.json
+        with open("sample_data.json", "w") as f:
+            json.dump(parsed_json_packets[:2], f, indent=2)
+        return parsed_json_packets
 
     def analyze(self):
         """Analyze the pcap file and extract relevant information."""

@@ -20,3 +20,5 @@ DEV_NOTES.md
 
 # Ignore dataset file
 dataset.json
+sample_data.json
+debug_packets.json

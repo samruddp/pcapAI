@@ -3,7 +3,7 @@ import sys
 import os
 import json
 from datetime import datetime
-from session_manager import SessionManager
+from src.session_manager import SessionManager
 
 # Global session manager (will be initialized in main)
 session = None
@@ -25,8 +25,12 @@ def show_session_status():
     print("="*50)
     print(f"🔑 OpenAI Key: {'✓ Set' if info['openai_key_set'] else '❌ Not set'}")
     print(f"📁 PCAP File: {info['pcap_file'] if info['pcap_file'] else '❌ Not set'}")
-    print(f"📊 PCAP Parsed: {'✓ Yes' if info['pcap_parsed'] else '❌ No'}")
+    if info['pcap_file'] and info.get('file_size_kb', 0) > 0:
+        print(f"� PCAP Size: {info['file_size_kb']:.1f} KB")
+    print(f"�📊 PCAP Parsed: {'✓ Yes' if info['pcap_parsed'] else '❌ No'}")
     print(f"🤖 AI Handler: {'✓ Ready' if info['ai_handler_ready'] else '❌ Not ready'}")
+    if info['ai_handler_ready']:
+        print(f"🔧 Handler Type: {info.get('ai_handler_type', 'Unknown')}")
     print(
         f"🔧 Protocol Filter: {', '.join(info['protocol_filter']) if info['protocol_filter'] else 'None (all protocols)'}"
     )

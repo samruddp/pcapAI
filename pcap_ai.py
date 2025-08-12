@@ -120,14 +120,14 @@ def interactive_mode(test_mode=False):
                     )
                     continue
 
-            user_input = input("\n🤖 pcapAI> ").strip()
+            user_input = input("\n🤖 packetSense> ").strip()
             
             if not user_input:
                 continue
                 
             # Handle exit commands
             if user_input.lower() in ['quit', 'exit', 'q']:
-                print("👋 Thanks for using pcapAI! Session saved.")
+                print("👋 Thanks for using PacketSense! Session saved.")
                 session.save_session()
                 session.save_history_and_dataset()
                 break

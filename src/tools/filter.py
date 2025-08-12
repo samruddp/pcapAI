@@ -89,9 +89,9 @@ class Filter:
                 "packets_filtered": 0
             }
     
-    def get_tool_definitions(self):
+    def get_tool_definitions(self, protocol_context=None):
         """Return all OpenAI function definitions for filtering tools."""
-        return [
+        tools = [
             {
                 "type": "function",
                 "function": {
@@ -162,8 +162,73 @@ class Filter:
                         "required": ["pyshark_filter"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "filter_packets_by_time_range",
+                    "description": "Filter packets by timestamp range (inclusive). Returns packets between start_time and end_time.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "start_time": {
+                                "type": "string",
+                                "description": "Start time in ISO format (e.g., '2024-11-01T09:00:00')"
+                            },
+                            "end_time": {
+                                "type": "string",
+                                "description": "End time in ISO format (e.g., '2024-11-01T10:00:00')"
+                            }
+                        },
+                        "required": ["start_time", "end_time"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "filter_packets_by_packet_number_range",
+                    "description": "Filter packets by packet number range (inclusive). Returns packets between start_number and end_number.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "start_number": {
+                                "type": "integer",
+                                "description": "Start packet number (1-based, as in Wireshark)"
+                            },
+                            "end_number": {
+                                "type": "integer",
+                                "description": "End packet number (1-based, as in Wireshark)"
+                            }
+                        },
+                        "required": ["start_number", "end_number"]
+                    }
+                }
             }
         ]
+        if protocol_context in ("nfs", "smb2"):
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "filter_request_and_response",
+                    "description": "Filter out a specific request packet (by packet number) and its response(s) for a given protocol.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "packet_number": {
+                                "type": "integer",
+                                "description": "Packet number of the request (1-based, as in Wireshark)"
+                            },
+                            "protocol": {
+                                "type": "string",
+                                "description": "Protocol to filter by (must be 'nfs' or 'smb2')"
+                            }
+                        },
+                        "required": ["packet_number", "protocol"]
+                    }
+                }
+            })
+        return tools
     
     def execute_tool(self, tool_name, arguments, analysis_data):
         """Execute the specified filter method."""
@@ -178,6 +243,12 @@ class Filter:
             return self.filter_by_ip(arguments, analysis_data)
         elif tool_name == "filter_packets_by_operation":
             return self.filter_by_operation(arguments, analysis_data)
+        elif tool_name == "filter_packets_by_time_range":
+            return self.filter_by_time_range(arguments.get("start_time"), arguments.get("end_time"))
+        elif tool_name == "filter_packets_by_packet_number_range":
+            return self.filter_by_packet_number_range(arguments.get("start_number"), arguments.get("end_number"))
+        elif tool_name == "filter_request_and_response":
+            return self.filter_request_and_response(arguments.get("packet_number"), arguments.get("protocol"))
         else:
             print(f"[DEBUG] ERROR: Unknown filter tool: {tool_name}")
             return {
@@ -283,4 +354,143 @@ class Filter:
             "status": "error",
             "message": "pyshark_filter is required for operation filtering, or provide valid operation/protocol combination",
             "packets_filtered": 0
+        }
+    
+    def filter_by_time_range(self, start_time, end_time):
+        """
+        Filter packets by timestamp range (inclusive).
+        start_time and end_time should be datetime objects or ISO strings.
+        """
+        import datetime
+
+        if not self.session or not self.session.pcap_file:
+            return {
+                "status": "error",
+                "message": "No pcap file available",
+                "packets_filtered": 0
+            }
+
+        # Convert string times to datetime if needed
+        if isinstance(start_time, str):
+            start_time = datetime.datetime.fromisoformat(start_time)
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=datetime.timezone.utc)
+        if isinstance(end_time, str):
+            end_time = datetime.datetime.fromisoformat(end_time)
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=datetime.timezone.utc)
+
+        capture = pyshark.FileCapture(self.session.pcap_file)
+        filtered_packets = []
+        for pkt in capture:
+            pkt_time = datetime.datetime.fromtimestamp(float(pkt.sniff_timestamp), tz=datetime.timezone.utc)
+            if start_time <= pkt_time <= end_time:
+                filtered_packets.append(pkt)
+        capture.close()
+
+        json_data = self.packet_parser.parse_packets_to_json(filtered_packets)
+        parsed_packets = json.loads(json_data)
+        return {
+            "status": "success",
+            "message": f"Filtered packets between {start_time} and {end_time}",
+            "packets_filtered": len(parsed_packets),
+            "filtered_data": {
+                "packets": parsed_packets,
+                "total_packets": len(parsed_packets),
+                "filter_type": "Time Range",
+                "filter_applied": f"{start_time} to {end_time}"
+            }
+        }
+    
+    def filter_by_packet_number_range(self, start_number, end_number):
+        """
+        Filter packets by packet number range (inclusive) from the pcap file.
+        start_number and end_number are 1-based (like Wireshark).
+        """
+        if not self.session or not self.session.pcap_file:
+            return {
+                "status": "error",
+                "message": "No pcap file available",
+                "packets_filtered": 0
+            }
+
+        capture = pyshark.FileCapture(self.session.pcap_file)
+        filtered_packets = []
+        for idx, pkt in enumerate(capture, start=1):  # start=1 for Wireshark-style numbering
+            if start_number <= idx <= end_number:
+                filtered_packets.append(pkt)
+            if idx > end_number:
+                break
+        capture.close()
+
+        json_data = self.packet_parser.parse_packets_to_json(filtered_packets)
+        parsed_packets = json.loads(json_data)
+        return {
+            "status": "success",
+            "message": f"Filtered packets with packet number between {start_number} and {end_number}",
+            "packets_filtered": len(parsed_packets),
+            "filtered_data": {
+                "packets": parsed_packets,
+                "total_packets": len(parsed_packets),
+                "filter_type": "Packet Number Range",
+                "filter_applied": f"{start_number} to {end_number}"
+            }
+        }
+    
+    def filter_request_and_response(self, packet_number, protocol):
+        """
+        Filter out a specific request packet (by packet number) and its response.
+        Only supports protocols with transaction IDs (e.g., NFS, SMB2).
+        """
+        if not self.session or not self.session.pcap_file:
+            return {
+                "status": "error",
+                "message": "No pcap file available",
+                "packets_filtered": 0
+            }
+
+        # First, find the request packet by packet number
+        capture = pyshark.FileCapture(self.session.pcap_file)
+        request_pkt = None
+        xid = None
+        msg_id = None
+        for idx, pkt in enumerate(capture, start=1):
+            if idx == packet_number:
+                request_pkt = pkt
+                if protocol == "nfs" and hasattr(pkt, "nfs"):
+                    xid = getattr(pkt.nfs, "xid", None)
+                elif protocol == "smb2" and hasattr(pkt, "smb2"):
+                    msg_id = getattr(pkt.smb2, "message_id", None)
+                break
+        capture.close()
+
+        if not request_pkt or (protocol == "nfs" and not xid) or (protocol == "smb2" and not msg_id):
+            return {
+                "status": "error",
+                "message": f"Could not find request packet or transaction ID for protocol '{protocol}'",
+                "packets_filtered": 0
+            }
+
+        # Now, find all packets with the same transaction ID
+        capture = pyshark.FileCapture(self.session.pcap_file)
+        filtered_packets = []
+        for pkt in capture:
+            if protocol == "nfs" and hasattr(pkt, "nfs") and getattr(pkt.nfs, "xid", None) == xid:
+                filtered_packets.append(pkt)
+            elif protocol == "smb2" and hasattr(pkt, "smb2") and getattr(pkt.smb2, "message_id", None) == msg_id:
+                filtered_packets.append(pkt)
+        capture.close()
+
+        json_data = self.packet_parser.parse_packets_to_json(filtered_packets)
+        parsed_packets = json.loads(json_data)
+        return {
+            "status": "success",
+            "message": f"Filtered request packet #{packet_number} and its response(s) for protocol '{protocol}'",
+            "packets_filtered": len(parsed_packets),
+            "filtered_data": {
+                "packets": parsed_packets,
+                "total_packets": len(parsed_packets),
+                "filter_type": "Request/Response Pair",
+                "filter_applied": f"packet_number={packet_number}, protocol={protocol}"
+            }
         }

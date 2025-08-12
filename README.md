@@ -1,49 +1,57 @@
-# pcapAI 🤖
+# PacketSense 🤖
 August 2025 hackathon project
 
-AI-powered network packet capture analysis with **persistent interactive sessions** and natural language queries.
+AI-powered network packet capture analysis with **natural language queries** and **persistent interactive sessions**.
 
 ## 🚀 Key Features
+- **Natural Language Queries**: Ask questions about packet traces in plain English
+- **AI-Powered Analysis**: Uses NetApp's internal LLM proxy API for intelligent responses
 - **Interactive Session Management**: Set your API key and pcap file once, query multiple times
 - **Persistent Data Storage**: Your session data survives between program restarts
-- **Smart Caching**: Large pcap files are parsed once and cached for performance
-- **Natural Language Queries**: Ask questions about packet traces in plain English
-- **Dual Operation Modes**: Interactive mode for exploration, CLI mode for automation
-- **AI-Powered Analysis**: Uses NetApp's internal LLM proxy API for intelligent responses
-- **Offline Fallback**: Graceful handling when AI is unavailable
+- **Protocol Filtering**: Focus analysis on specific protocols (NFS, SMB2, HTTP) per session
+- **AI Tool Calling**: Advanced filtering with pyshark integration for precise packet analysis
+- **Dual Operation Modes**: Interactive mode with two flavors : User mode and Test mode (Feedback collection)
 
 ## 🎯 Quick Start
 
 ### 1. **First Time Setup** (One-time only)
-```bash
-# Set your API key and pcap file once
-python pcap_ai.py --key "path/to/your/netapp_llm_key.txt" --pcap "path/to/your/file.pcap"
-```
-This automatically enters **interactive mode** after setup.
 
-### 2. **Interactive Session** (Recommended)
+#### **User Mode**
 ```bash
-🤖 pcapAI> How many packets are in this capture?
-🤖 pcapAI> What are the top source IP addresses?
-🤖 pcapAI> Show me any suspicious network activity
-🤖 pcapAI> quit
+# Set your API key and pcap file once (User mode)
+python pcap_ai.py --key /path/to/your/netapp_llm_key.txt --pcap /path/to/your/file.pcap --u
 ```
 
-### 3. **Future Sessions** (No setup needed!)
+#### **Test Mode**
 ```bash
-# Just run - your previous session is automatically restored!
-python pcap_ai.py
-🤖 pcapAI> What protocols are being used?
-🤖 pcapAI> Analyze the bandwidth usage patterns
+# Set your API key and pcap file once (Test mode for feedback collection)
+python pcap_ai.py --key /path/to/your/netapp_llm_key.txt --pcap /path/to/your/file.pcap --t
 ```
+This automatically enters **interactive mode** after setup in either mode.
 
-### 4. **Quick Single Query** (Automation friendly)
+### 3. **Protocol Selection** (Required per session)
 ```bash
-python pcap_ai.py --query "What ports are being used most frequently?"
+🧬 Available protocols: NFS, HTTP, SMB2
+🌈 Please enter ONE protocol to focus on for this session (or press Enter to skip): NFS
+✅ Protocol set for session: NFS
 ```
-
+ 
+### 4. **Interactive Session** (Both modes)
+```bash
+🤖 packetSense> How many packets are in this capture?
+🤖 packetSense> What are the top source IP addresses?
+🤖 packetSense> quit
+```
+ 
+### 5. **Test Mode Feedback** (Test mode only)
+```bash
+📊 Rate the AI's response [s=satisfied | n=neutral | u=unsatisfied]: s
+💭 Would you like to provide a reason for your rating? (If not, then press Enter to skip): The analysis was comprehensive and accurate
+✓ Thank you for your feedback! Rating: satisfied
+```
+ 
 ## 📋 Interactive Commands
-
+ 
 | Command | Description | Example |
 |---------|-------------|---------|
 | `<question>` | Ask any question about your pcap | `How many HTTP requests are there?` |
@@ -53,89 +61,79 @@ python pcap_ai.py --query "What ports are being used most frequently?"
 | `clear` | Clear all session data | `clear` |
 | `help` | Show all commands | `help` |
 | `quit` or `exit` | Save session and exit | `quit` |
-
+ 
+## 🧪 Operation Modes
+ 
+### **Test Mode (`--t`)**
+- Collects feedback after each AI response
+- Prompts for satisfaction rating (satisfied/neutral/unsatisfied)
+- Optional reason for rating
+- Used for improving AI model performance
+- Saves feedback to dataset.json
+- Shows detailed debug information
+ 
+### **User Mode (`--u`)**
+- Standard analysis mode
+- No feedback collection
+- Cleaner interface for regular use
+- Focuses on analysis results
+ 
 ## 🛠️ Advanced Usage
-
+ 
 ### **Session Management**
 ```bash
 # Check what's currently loaded
 python pcap_ai.py --status
-
-# Clear your session and start fresh
+ 
+# Clear your session and start fresh  
 python pcap_ai.py --clear
-
-# Force interactive mode
-python pcap_ai.py --interactive
+ 
+# Clear conversation history
+python pcap_ai.py --clear-history
+ 
+# Test mode with existing session
+python pcap_ai.py --t
+ 
+# User mode with existing session
+python pcap_ai.py --u
 ```
 
 ### **Workflow Examples**
 
-#### **🔍 Security Analysis Workflow**
-```bash
-python pcap_ai.py --key api_key.txt --pcap suspicious_traffic.pcap
-🤖 pcapAI> Are there any port scans in this traffic?
-🤖 pcapAI> Show me connections to external IP addresses
-🤖 pcapAI> What's the timeline of network events?
-🤖 pcapAI> Are there any DNS exfiltration attempts?
-```
-
-#### **📊 Performance Analysis Workflow**
+#### **🕵️ Protocol Specific Packet Analysis **
 ```bash
 python pcap_ai.py
-🤖 pcapAI> pcap network_performance.pcap
-🤖 pcapAI> What's the bandwidth utilization over time?
-🤖 pcapAI> Show me the largest packets and their sources
-🤖 pcapAI> Are there any retransmissions or packet loss?
+🤖 packetSense> How many write requests do you see in the trace?
+🤖 packetSense> Can you summarize the response for packet 17?
+🤖 packetSense> How many files were created in between 12:07:55 and 12:07:56 on 08/05/2025?
 ```
-
-#### **🕵️ Network Forensics Workflow**
-```bash
-python pcap_ai.py
-🤖 pcapAI> What applications are generating traffic?
-🤖 pcapAI> Show me the communication patterns
-🤖 pcapAI> Are there any unusual protocols being used?
-🤖 pcapAI> What's the geographic distribution of traffic?
-```
-
-## 💡 Example Queries
-
-### **General Analysis**
-- "How many packets are in this capture?"
-- "What's the time span of this network trace?"
-- "Show me the protocol distribution"
-- "What are the top talkers by data volume?"
-
-### **Security Focused**
-- "Are there any suspicious network connections?"
-- "Show me failed connection attempts"
-- "Are there any port scans or brute force attempts?"
-- "What external IP addresses are being contacted?"
-
-### **Performance Analysis** 
-- "What's the bandwidth usage pattern?"
-- "Show me the largest packets and their purpose"
-- "Are there any network errors or retransmissions?"
-- "What's the latency between specific hosts?"
-
-### **Application Layer**
-- "What web traffic is present in this capture?"
-- "Show me DNS queries and responses"
-- "Are there any file transfers happening?"
-- "What applications are generating the most traffic?"
 
 ## 🏗️ Project Structure
 ```
 pcapAI/
 ├── src/
 │   ├── __init__.py
-│   ├── pcap_analyzer.py      # Packet parsing and analysis
-│   ├── ai_query_handler.py   # AI API integration
-│   └── packet_parser.py      # Core packet processing
-├── pcap_ai.py               # Main entry point with session management
-├── session_data.pkl         # Auto-generated session storage
-├── requirements.txt         # Python dependencies
-├── .gitignore              # Excludes session and key files
-└── README.md               # This file
+│   ├── pcap_analyzer.py        # Packet parsing and analysis
+│   ├── ai_query_handler.py     # AI API integration and query handling
+│   ├── packet_parser.py        # Core packet processing and JSON conversion
+│   ├── protocols/
+│   │   ├── __init__.py
+│   │   ├── base.py             # Protocol base class
+│   │   ├── nfs.py              # NFS protocol logic
+│   │   ├── smb2.py             # SMB2 protocol logic
+│   │   └── http.py             # HTTP protocol logic
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   ├── filter.py           # Filtering logic (time, packet number, operation, etc.)
+│   │   └── tool_calling_handler.py # Tool calling and chaining logic
+│   └── utils/
+│       ├── __init__.py
+│       └── helpers.py          # Utility/helper functions
+├── pcap_ai.py                  # Main entry point with session management
+├── session_data.pkl            # Auto-generated session storage
+├── requirements.txt            # Python dependencies
+├── .gitignore                  # Excludes session and key files
+└── README.md                   # This file
 ```
 
 ## 🔧 Installation & Setup
@@ -192,13 +190,13 @@ $ python pcap_ai.py --key key.txt --pcap large_file.pcap --query "Question 2"
 ```bash
 $ python pcap_ai.py --key key.txt --pcap large_file.pcap
 # ⏳ Parsing 500MB pcap file... (2 minutes, one time only)
-🤖 pcapAI> Question 1  # ⚡ Instant response!
-🤖 pcapAI> Question 2  # ⚡ Instant response!
-🤖 pcapAI> Question 3  # ⚡ Instant response!
+🤖 packetSense> Question 1  # ⚡ Instant response!
+🤖 packetSense> Question 2  # ⚡ Instant response!
+🤖 packetSense> Question 3  # ⚡ Instant response!
 
 # Next day...
 $ python pcap_ai.py
-🤖 pcapAI> New question  # ⚡ Everything restored instantly!
+🤖 packetSense> New question  # ⚡ Everything restored instantly!
 ```
 
 ## 📊 Session Persistence
